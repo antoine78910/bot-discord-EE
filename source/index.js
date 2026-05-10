@@ -504,13 +504,29 @@ async function greetNewTicketChannel(channel) {
     if (!isTicketChannel(channel)) return;
     if (aiGreetedTickets.has(channel.id)) return;
     aiGreetedTickets.add(channel.id);
+
+    if (ticketHistory.tickets[channel.id]?.greeted) return;
+
     setTimeout(async () => {
+        if (ticketHistory.tickets[channel.id]?.greeted) return;
+
         try {
+            const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+            if (recent && [...recent.values()].some((m) => m.author?.id === client.user?.id)) {
+                const rec = ensureTicketRecord(channel);
+                rec.greeted = true;
+                persistTicketHistory();
+                log('AI', 'greeting skipped (already posted)', { channelId: channel.id });
+                return;
+            }
+
             const greeting = "Hi! I'm the AI assistant. Describe your issue in a few words and I'll try to help right away. Type **human** anytime to talk to a team member.";
             const sent = await channel.send({
                 content: greeting,
                 allowedMentions: { parse: [] },
             });
+            const rec = ensureTicketRecord(channel);
+            rec.greeted = true;
             recordTicketEvent(channel, {
                 id: sent.id,
                 role: 'assistant',
