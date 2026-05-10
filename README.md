@@ -55,11 +55,8 @@ git push -u origin main
 
 1. Go to <https://railway.app> and click **New Project → Deploy from GitHub repo**.
 2. Pick your newly pushed repo.
-3. Railway auto-detects the `railway.json` at the root and runs:
-   ```
-   cd source && npm install --omit=dev
-   cd source && node index.js
-   ```
+3. Railway reads `railway.json` and builds the included `Dockerfile`, which
+   installs only production dependencies and runs `node index.js`.
 
 ### 3. Add the environment variables
 
@@ -110,6 +107,8 @@ without redeploying).
 
 ```
 .
+├── Dockerfile                # Builds the production image (used by Railway)
+├── .dockerignore
 ├── railway.json              # Railway build/deploy config
 ├── .gitignore
 ├── README.md
