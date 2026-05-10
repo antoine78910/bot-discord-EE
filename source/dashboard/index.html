@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tickets Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%92%AC</text></svg>" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">EE</div>
+    <div>
+      <div class="brand-title">Ecom Efficiency · Tickets</div>
+      <div class="brand-sub" id="botStatus">Connecting…</div>
+      <div class="brand-knowledge muted" id="knowledgeStatus">Knowledge: —</div>
+    </div>
+  </div>
+  <div class="totals" id="totals">
+    <div class="kpi"><span class="kpi-label">Tickets</span><span class="kpi-value" id="kpiTickets">—</span></div>
+    <div class="kpi"><span class="kpi-label">Questions</span><span class="kpi-value" id="kpiQuestions">—</span></div>
+    <div class="kpi"><span class="kpi-label">AI replies</span><span class="kpi-value" id="kpiReplies">—</span></div>
+    <div class="kpi kpi-warn"><span class="kpi-label">Escalations</span><span class="kpi-value" id="kpiEscalations">—</span></div>
+  </div>
+  <div class="topbar-meta">
+    <span id="lastRefreshed" class="muted">—</span>
+    <button id="refreshBtn" class="btn">Refresh</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <div class="search-row">
+      <input id="search" type="text" placeholder="Search by channel name…" autocomplete="off" />
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="escalated">Escalated</option>
+        <option value="ai_paused">AI paused</option>
+      </select>
+    </div>
+    <div id="ticketList" class="ticket-list">
+      <div class="empty">No tickets yet.</div>
+    </div>
+  </aside>
+
+  <section id="ticketPane" class="ticket-pane">
+    <div class="empty-pane">
+      <div class="empty-pane-title">Select a ticket</div>
+      <div class="empty-pane-sub">Pick a conversation on the left to view its full history.</div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

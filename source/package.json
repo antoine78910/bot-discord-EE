@@ -1,0 +1,17 @@
+{
+  "name": "ecom-efficiency-tickets-bot",
+  "version": "2.0.0",
+  "description": "Discord ticket assistant powered by Claude, with web dashboard.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
