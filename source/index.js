@@ -492,6 +492,23 @@ async function fetchTicketHistoryForAi(channel) {
     return conversation;
 }
 
+async function isPreemptedByStaff(triggerMessage) {
+    if (aiDisabledTickets.has(triggerMessage.channel.id)) return true;
+    try {
+        const fetched = await triggerMessage.channel.messages.fetch({
+            limit: 10,
+            after: triggerMessage.id,
+        });
+        for (const msg of fetched.values()) {
+            if (msg.author?.id === client.user?.id) continue;
+            if (msg.author?.bot) continue;
+            if (OWNER_USER_ID && msg.author?.id === OWNER_USER_ID) return true;
+            if (STAFF_ROLE_ID && msg.member?.roles?.cache?.has(STAFF_ROLE_ID)) return true;
+        }
+    } catch {}
+    return false;
+}
+
 async function callClaudeForTicket(channel) {
     if (!anthropicClient) return null;
     const messages = await fetchTicketHistoryForAi(channel);
@@ -730,10 +747,18 @@ async function handleTicketAiMessage(message) {
             reply = await callClaudeForTicket(message.channel);
         } catch (error) {
             console.error('[AI] Claude call failed:', error?.message || error);
-            await escalateTicket(message.channel, `Claude call failed: ${error?.message || error}`);
+            if (!(await isPreemptedByStaff(message))) {
+                await escalateTicket(message.channel, `Claude call failed: ${error?.message || error}`);
+            }
             return;
         }
         if (!reply) return;
+
+        if (await isPreemptedByStaff(message)) {
+            aiDisabledTickets.add(message.channel.id);
+            log('AI', 'preempted by staff — AI reply dropped', { channelId: message.channel.id });
+            return;
+        }
 
         const shouldEscalate = /<ESCALATE>/i.test(reply);
         const cleaned = reply.replace(/<ESCALATE>/gi, '').trim();
@@ -753,7 +778,7 @@ async function handleTicketAiMessage(message) {
             });
         }
 
-        if (shouldEscalate) {
+        if (shouldEscalate && !(await isPreemptedByStaff(message))) {
             await escalateTicket(message.channel, 'AI requested escalation (low confidence).');
         }
     } finally {
