@@ -1,4 +1,4 @@
-# Ecom Efficiency — Support FAQ (DRAFT)
+# Ecom Efficiency — Support FAQ
 
 > Edit this file freely. The bot reads it on every reply, so changes apply instantly without restarting.
 > Keep entries short and factual. Anything you do NOT write here, the AI will not know.
@@ -6,7 +6,7 @@
 ## About Ecom Efficiency
 
 - Website: https://ecomefficiency.com
-- We provide pooled access to ecom/marketing tools (Pipiads, Capcut, Canva, Brain.fm, etc.) through shared workspace logins.
+- We provide pooled access to ecom/marketing tools (Pipiads, Capcut, Canva, Brain.fm, Eleven Labs, Higgsfield, HeyGen, Midjourney, Runway, Dropship.io, Shophunter, Vmake, etc.) through shared workspace logins.
 - Plans are managed on the website. Members reactivate, upgrade, or cancel from there.
 
 ## Sublaunch plan
@@ -37,6 +37,27 @@ No. Each subscription is for one person. Account sharing can lead to access bein
 
 ### "How do I contact a real human?"
 Just say "human" or "staff" in the ticket and a team member will join.
+
+### "A popup is asking me for an email when logging into Higgsfield / Eleven Labs"
+Tell them to enter the **personal email they used when subscribing on ecomefficiency.com**. Same email as their Ecom Efficiency account, no other email.
+
+## Tool credit reset schedule
+
+All resets happen at **12:00 UTC+7** (Bangkok / Hanoi) = **07:00 UTC+2** (France in summer). When telling a user, give the date and time in 24h format and clarify the timezone.
+
+- **Eleven Labs (default workspace)**: resets every 3 days. Reference: 2026-05-11 was a reset day. To find the next reset, add multiples of 3 days from there.
+- **Eleven Labs (500k credits tier)**: 15th of every month.
+- **HeyGen**: every Sunday.
+- **Pipiads (200k credits tier)**: 15th of every month.
+- **Pipiads (100k credits tier)**: 2nd of every month.
+- **Higgsfield**: 5th and 20th of every month (~6k credits added each time).
+- **Midjourney**: 14th of every month.
+- **Shophunter**: 14th of every month.
+- **Dropship.io**: 10th of every month.
+- **Runway**: 20th of every month.
+- **Vmake**: 4th of every month.
+
+If a user reports being out of credits on a tool, give them only the next reset date for that specific tool, in 1-2 short sentences. Do not list the whole schedule.
 
 ## What the AI must NEVER do
 
