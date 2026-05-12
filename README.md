@@ -58,6 +58,23 @@ git push -u origin main
 3. Railway reads `railway.json` and builds the included `Dockerfile`, which
    installs only production dependencies and runs `node index.js`.
 
+### 2b. Vérifier le déploiement (souvent la cause si « rien sur Railway »)
+
+- **Un seul `DISCORD_BOT_TOKEN` actif** : Discord n’autorise qu’**une** connexion
+  gateway par token. Si tu lances `cd source && npm start` sur ton PC avec le
+  même token que Railway, **c’est ton PC qui tient la session** : Railway se
+  fait déconnecter (ou l’inverse). Arrête le bot local pour que Railway reste
+  en ligne et exécute `ensureAdspowerOtpPanel` (message « Get the code »).
+- **Root Directory** : dans Railway → service → **Settings**, le champ *Root
+  Directory* doit rester **vide** (racine du repo = là où est le `Dockerfile`).
+- **Start command** : avec le Dockerfile du repo, ne force pas un *Custom Start
+  Command* qui lancerait autre chose que `node index.js` (laisser vide pour
+  utiliser le `CMD` du Dockerfile).
+- **Logs** : après déploiement, cherche `[BOOT] Running on Railway` dans les
+  logs du service. Si tu vois plutôt *Running outside Railway*, ce conteneur
+  n’est pas celui de Railway (ou les variables `RAILWAY_*` ne sont pas là).
+  Cherche aussi `[BOT] Shard disconnected` si la session saute souvent.
+
 ### 3. Add the environment variables
 
 In the Railway service, open **Variables → Raw Editor** and paste:

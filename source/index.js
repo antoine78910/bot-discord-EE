@@ -1056,6 +1056,22 @@ async function registerGuildCommands() {
     log('BOT', `Slash commands registered on ${guild.name}`);
 }
 
+/** One Discord bot token = one gateway session. A local `npm start` kicks Railway (or the reverse). */
+function logRuntimeTarget() {
+    const onRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+    const bits = [process.env.RAILWAY_SERVICE_NAME, process.env.RAILWAY_ENVIRONMENT_NAME, process.env.RAILWAY_REPLICA_ID].filter(
+        Boolean
+    );
+    if (onRailway) {
+        log('BOOT', `Running on Railway — ${bits.join(' · ') || 'RAILWAY_* env present'}. PORT=${DASHBOARD_PORT}`);
+    } else {
+        log(
+            'BOOT',
+            'Running outside Railway (no RAILWAY_PROJECT_ID / RAILWAY_ENVIRONMENT). If you use the same DISCORD_BOT_TOKEN as production, stop this process so Railway can stay connected.'
+        );
+    }
+}
+
 // === Discord event listeners ===
 client.once(Events.ClientReady, async (readyClient) => {
     log('BOT', `Logged in as ${readyClient.user.tag}`);
@@ -1122,6 +1138,14 @@ client.on(Events.ChannelCreate, (channel) => {
 client.on(Events.MessageCreate, (message) => {
     handleTicketAiMessage(message).catch((error) => {
         console.error('[AI] message handler error:', error?.message || error);
+    });
+});
+
+client.on(Events.ShardDisconnect, (event, shardId) => {
+    console.warn('[BOT] Discord shard disconnected', {
+        shardId,
+        code: event?.code,
+        reason: String(event?.reason || ''),
     });
 });
 
@@ -1201,6 +1225,7 @@ app.use(express.static(DASHBOARD_DIRECTORY));
 
 app.listen(DASHBOARD_PORT, () => {
     log('DASHBOARD', `http://localhost:${DASHBOARD_PORT}`);
+    logRuntimeTarget();
 });
 
 // === Boot ===
