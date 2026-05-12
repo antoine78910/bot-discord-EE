@@ -1,6 +1,10 @@
 const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     ChannelType,
     Client,
+    ComponentType,
     Events,
     GatewayIntentBits,
     Partials,
@@ -8,6 +12,7 @@ const {
     PermissionsBitField,
     SlashCommandBuilder,
 } = require('discord.js');
+const { generateSync } = require('otplib');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -48,6 +53,19 @@ const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || process.env.TICKET_STAFF_ROLE
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
 const DASHBOARD_PORT = Number(process.env.PORT) || 1500;
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
+/** AdsPower TOTP “Get the code” panel (same Railway service as ticket AI). */
+const DISCORD_ADSPOWER_OTP_CHANNEL_ID = String(
+    process.env.DISCORD_ADSPOWER_OTP_CHANNEL_ID || '1262357372970467451'
+).trim();
+const DISCORD_ADSPOWER_AUTHENTICATOR_SECRET = String(
+    process.env.DISCORD_ADSPOWER_AUTHENTICATOR_SECRET || ''
+).trim();
+const DISCORD_ADSPOWER_TOTP_MIN_VALID_SEC = Math.max(
+    1,
+    Math.min(29, Number(process.env.DISCORD_ADSPOWER_TOTP_MIN_VALID_SEC || 20) || 20)
+);
+const ADSPOWER_TOTP_BUTTON_ID = 'ee_adspower_get_totp';
 
 const SEED_DATA_DIRECTORY = path.resolve(__dirname, 'data');
 const DATA_DIRECTORY = process.env.DATA_DIRECTORY
@@ -169,6 +187,106 @@ const client = new Client({
 const anthropicClient = (Anthropic && ANTHROPIC_API_KEY)
     ? new Anthropic({ apiKey: ANTHROPIC_API_KEY })
     : null;
+
+const TOTP_PERIOD_SEC = 30;
+
+function totpSecondsLeftInPeriod(epochSec, period = TOTP_PERIOD_SEC) {
+    const mod = epochSec % period;
+    return mod === 0 ? period : period - mod;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateAdspowerTotpPayload(secret) {
+    const minValid = DISCORD_ADSPOWER_TOTP_MIN_VALID_SEC;
+    let epoch = Math.floor(Date.now() / 1000);
+    let left = totpSecondsLeftInPeriod(epoch);
+    if (left < minValid) await sleep((left + 1) * 1000);
+    epoch = Math.floor(Date.now() / 1000);
+    const code = generateSync({ secret, strategy: 'totp', period: TOTP_PERIOD_SEC });
+    left = totpSecondsLeftInPeriod(epoch);
+    return { code, validUntilUnix: epoch + left };
+}
+
+function messageHasAdspowerOtpButton(message) {
+    try {
+        const rows = message?.components;
+        if (!Array.isArray(rows)) return false;
+        for (const row of rows) {
+            const comps = row?.components || row?.data?.components;
+            if (!Array.isArray(comps)) continue;
+            for (const c of comps) {
+                if (c?.type === ComponentType.Button && c?.customId === ADSPOWER_TOTP_BUTTON_ID) return true;
+            }
+        }
+    } catch {}
+    return false;
+}
+
+async function ensureAdspowerOtpPanel() {
+    if (!TOKEN || !DISCORD_ADSPOWER_OTP_CHANNEL_ID) return;
+    try {
+        const ch = await client.channels.fetch(DISCORD_ADSPOWER_OTP_CHANNEL_ID);
+        if (!ch || !ch.isTextBased()) {
+            console.warn(
+                '[BOT] AdsPower OTP channel not found or not text-based:',
+                DISCORD_ADSPOWER_OTP_CHANNEL_ID
+            );
+            return;
+        }
+        const recent = await ch.messages.fetch({ limit: 40 }).catch(() => null);
+        if (recent) {
+            for (const [, msg] of recent) {
+                if (msg.author?.id === client.user.id && messageHasAdspowerOtpButton(msg)) {
+                    log('BOT', `AdsPower OTP panel already present (message ${msg.id})`);
+                    return;
+                }
+            }
+        }
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(ADSPOWER_TOTP_BUTTON_ID)
+                .setLabel('Get the code')
+                .setStyle(ButtonStyle.Primary)
+        );
+        const configured = Boolean(DISCORD_ADSPOWER_AUTHENTICATOR_SECRET);
+        const hint = configured
+            ? 'Click **Get the code** to receive the current 6-digit Authenticator code (visible only to you).'
+            : '**Setup:** set `DISCORD_ADSPOWER_AUTHENTICATOR_SECRET` on the host (Base32 secret).';
+        await ch.send({
+            content:
+                '**AdsPower — Authenticator (TOTP)**\n' +
+                hint +
+                '\n_This is the same type of code as Google Authenticator / AdsPower._',
+            components: [row],
+        });
+        log('BOT', `AdsPower OTP panel posted in channel ${DISCORD_ADSPOWER_OTP_CHANNEL_ID}`);
+    } catch (e) {
+        console.warn('[BOT] ensureAdspowerOtpPanel failed', e?.message || e);
+    }
+}
+
+async function handleAdspowerTotpButton(interaction) {
+    const secret = DISCORD_ADSPOWER_AUTHENTICATOR_SECRET;
+    if (!secret) {
+        await interaction.reply({
+            content:
+                'Authenticator is not configured. Set `DISCORD_ADSPOWER_AUTHENTICATOR_SECRET` (Base32) on Railway.',
+            ephemeral: true,
+        });
+        return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const { code, validUntilUnix } = await generateAdspowerTotpPayload(secret);
+    const left = Math.max(0, validUntilUnix - Math.floor(Date.now() / 1000));
+    await interaction.editReply({
+        content:
+            `**Current code:** \`${code}\`\n` +
+            `**Time left:** ${left}s (then tap the button again).`,
+    });
+}
 
 const aiDisabledTickets = new Set();
 const aiGreetedTickets = new Set();
@@ -908,6 +1026,11 @@ client.once(Events.ClientReady, async (readyClient) => {
     } catch (error) {
         console.error('[BOT] Failed to register slash commands:', error);
     }
+    try {
+        await ensureAdspowerOtpPanel();
+    } catch (error) {
+        console.warn('[BOT] AdsPower OTP panel on startup:', error?.message || error);
+    }
     if (GUILD_ID) {
         try {
             const guild = await client.guilds.fetch(GUILD_ID);
@@ -927,6 +1050,10 @@ client.once(Events.ClientReady, async (readyClient) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
+        if (interaction.isButton() && interaction.customId === ADSPOWER_TOTP_BUTTON_ID) {
+            await handleAdspowerTotpButton(interaction);
+            return;
+        }
         if (interaction.isChatInputCommand() && interaction.commandName === AI_TOGGLE_COMMAND) {
             await handleAiToggleCommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === REINDEX_COMMAND) {
@@ -936,9 +1063,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);
-        if (interaction.isRepliable() && !interaction.replied) {
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
             try {
                 await interaction.reply({ content: 'Something went wrong.', ephemeral: true });
+            } catch {}
+        } else if (interaction.deferred) {
+            try {
+                await interaction.editReply({ content: 'Something went wrong.' });
             } catch {}
         }
     }
