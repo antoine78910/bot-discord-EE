@@ -251,15 +251,8 @@ async function ensureAdspowerOtpPanel() {
                 .setLabel('Get the code')
                 .setStyle(ButtonStyle.Primary)
         );
-        const configured = Boolean(DISCORD_ADSPOWER_AUTHENTICATOR_SECRET);
-        const hint = configured
-            ? 'Click **Get the code** to receive the current 6-digit Authenticator code (visible only to you).'
-            : '**Setup:** set `DISCORD_ADSPOWER_AUTHENTICATOR_SECRET` on the host (Base32 secret).';
         await ch.send({
-            content:
-                '**AdsPower — Authenticator (TOTP)**\n' +
-                hint +
-                '\n_This is the same type of code as Google Authenticator / AdsPower._',
+            content: 'Click to get your Adspower verification code',
             components: [row],
         });
         log('BOT', `AdsPower OTP panel posted in channel ${DISCORD_ADSPOWER_OTP_CHANNEL_ID}`);
