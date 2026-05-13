@@ -227,42 +227,73 @@ function messageHasAdspowerOtpButton(message) {
     return false;
 }
 
-async function trackDiscordAdspowerTotpRequest(interaction) {
-    if (!ACTIVITY_TRACK_URL || !ACTIVITY_TRACK_BOT_SECRET) return;
+async function trackDiscordAdspowerTotpRequest(interaction, extraMeta = {}) {
     const uid = interaction.user?.id;
-    if (!uid) return;
-    const username = String(interaction.user?.username || 'unknown')
+    if (!uid) {
+        console.warn('[BOT] AdsPower track skipped: no interaction.user.id');
+        return;
+    }
+
+    const user = interaction.user;
+    const handle = String(user?.username || 'unknown')
         .replace(/@/g, '')
-        .slice(0, 72);
-    const globalName = interaction.user?.globalName
-        ? String(interaction.user.globalName).slice(0, 72)
-        : null;
-    const displayName = globalName || username;
+        .slice(0, 32);
+    const globalName = user?.globalName ? String(user.globalName).slice(0, 72) : null;
+    const member = interaction.member;
+    let serverNickname = null;
+    let displayName = globalName || handle;
+    if (member && typeof member === 'object') {
+        if ('nickname' in member && member.nickname) serverNickname = String(member.nickname).slice(0, 72);
+        if ('displayName' in member && typeof member.displayName === 'string' && member.displayName) {
+            displayName = String(member.displayName).slice(0, 72);
+        } else if (serverNickname) {
+            displayName = serverNickname;
+        }
+    }
+
+    const url = ACTIVITY_TRACK_URL;
+    const secret = ACTIVITY_TRACK_BOT_SECRET;
+    if (!url || !secret) {
+        console.warn(
+            '[BOT] AdsPower click NOT sent to app: set ACTIVITY_TRACK_URL (full …/api/activity/track-event) and ACTIVITY_TRACK_BOT_SECRET on Railway (same secret as Vercel).',
+            { discord_user_id: uid, discord_display: displayName }
+        );
+        return;
+    }
+
+    const clickedAt = new Date().toISOString();
     const body = {
         user_id: `discord:${uid}`,
-        email: `${username}@discord-ee.local`,
+        email: `${handle}@discord-ee.local`,
         action: 'adspower_discord_totp_request',
         tool_name: 'adspower_discord_totp',
         meta: {
             discord_user_id: uid,
-            discord_username: username,
-            global_name: globalName,
-            display_name: displayName,
+            discord_username: handle,
+            discord_global_name: globalName,
+            discord_server_nickname: serverNickname,
+            discord_display: displayName,
+            clicked_at: clickedAt,
+            guild_id: interaction.guildId || null,
+            channel_id: interaction.channelId || null,
             source: 'discord_ticket_bot',
+            ...extraMeta,
         },
     };
     try {
-        const r = await fetch(ACTIVITY_TRACK_URL, {
+        const r = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${ACTIVITY_TRACK_BOT_SECRET}`,
+                Authorization: `Bearer ${secret}`,
             },
             body: JSON.stringify(body),
         });
         if (!r.ok) {
             const txt = await r.text().catch(() => '');
-            console.warn('[BOT] AdsPower Discord activity track failed', r.status, txt.slice(0, 200));
+            console.warn('[BOT] AdsPower Discord activity track failed', r.status, txt.slice(0, 240));
+        } else {
+            log('BOT', `AdsPower click tracked → app for @${displayName} (${handle}) [${extraMeta.outcome || 'ok'}]`);
         }
     } catch (e) {
         console.warn('[BOT] AdsPower Discord activity track error', e?.message || e);
@@ -321,17 +352,33 @@ async function handleAdspowerTotpButton(interaction) {
                 'Authenticator is not configured. Set `DISCORD_ADSPOWER_AUTHENTICATOR_SECRET` (Base32) on Railway.',
             ephemeral: true,
         });
+        await trackDiscordAdspowerTotpRequest(interaction, { outcome: 'skipped_no_totp_secret' });
         return;
     }
-    await interaction.deferReply({ ephemeral: true });
-    const { code, validUntilUnix } = await generateAdspowerTotpPayload(secret);
-    const left = Math.max(0, validUntilUnix - Math.floor(Date.now() / 1000));
-    await interaction.editReply({
-        content:
-            `**Current code:** \`${code}\`\n` +
-            `**Time left:** ${left}s (then tap the button again).`,
-    });
-    void trackDiscordAdspowerTotpRequest(interaction);
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const { code, validUntilUnix } = await generateAdspowerTotpPayload(secret);
+        const left = Math.max(0, validUntilUnix - Math.floor(Date.now() / 1000));
+        await interaction.editReply({
+            content:
+                `**Current code:** \`${code}\`\n` +
+                `**Time left:** ${left}s (then tap the button again).`,
+        });
+        await trackDiscordAdspowerTotpRequest(interaction, { outcome: 'code_delivered' });
+    } catch (e) {
+        console.warn('[BOT] handleAdspowerTotpButton', e?.message || e);
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: 'Could not generate the code. Try again in a moment.' });
+            } else {
+                await interaction.reply({ content: 'Could not generate the code. Try again in a moment.', ephemeral: true });
+            }
+        } catch {}
+        await trackDiscordAdspowerTotpRequest(interaction, {
+            outcome: 'error',
+            error: String(e?.message || e || 'unknown'),
+        });
+    }
 }
 
 const aiDisabledTickets = new Set();
