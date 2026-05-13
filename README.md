@@ -88,9 +88,22 @@ TICKET_CHANNEL_PREFIX=ticket-
 OWNER_USER_ID=your_discord_user_id
 STAFF_ROLE_ID=optional_role_id
 DASHBOARD_PASSWORD=a_strong_password_you_choose
+
+# AdsPower Discord button → Next.js /admin tracking (REQUIRED or clicks are not saved)
+# Use your real production URL (https, no trailing slash before /api).
+ACTIVITY_TRACK_URL=https://ecomefficiency.com/api/activity/track-event
+# Must match Vercel env ACTIVITY_TRACK_BOT_SECRET exactly (generate e.g. openssl rand -hex 32).
+ACTIVITY_TRACK_BOT_SECRET=your_long_random_secret_same_as_vercel
 ```
 
 > Do **not** set `PORT` — Railway injects it automatically and the bot reads it.
+
+**Vercel (Next app, same project as Supabase `ip_events`):** add **only**  
+`ACTIVITY_TRACK_BOT_SECRET` = the **same** string as in Railway above.  
+Redeploy Production after saving variables.
+
+If either variable is missing on Railway, logs show  
+`ACTIVITY_TRACK_URL_set: false` or `ACTIVITY_TRACK_BOT_SECRET_set: false`.
 
 ### 4. Generate a public URL
 

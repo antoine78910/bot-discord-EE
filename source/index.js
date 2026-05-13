@@ -254,10 +254,13 @@ async function trackDiscordAdspowerTotpRequest(interaction, extraMeta = {}) {
     const url = ACTIVITY_TRACK_URL;
     const secret = ACTIVITY_TRACK_BOT_SECRET;
     if (!url || !secret) {
-        console.warn(
-            '[BOT] AdsPower click NOT sent to app: set ACTIVITY_TRACK_URL (full …/api/activity/track-event) and ACTIVITY_TRACK_BOT_SECRET on Railway (same secret as Vercel).',
-            { discord_user_id: uid, discord_display: displayName }
-        );
+        console.warn('[BOT] AdsPower click NOT sent to app — missing Railway env:', {
+            ACTIVITY_TRACK_URL_set: Boolean(url),
+            ACTIVITY_TRACK_BOT_SECRET_set: Boolean(secret),
+            hint: 'Railway → Variables: ACTIVITY_TRACK_URL=https://<ton-domaine-next>/api/activity/track-event and ACTIVITY_TRACK_BOT_SECRET (same value as Vercel ACTIVITY_TRACK_BOT_SECRET).',
+            discord_user_id: uid,
+            discord_display: displayName,
+        });
         return;
     }
 
