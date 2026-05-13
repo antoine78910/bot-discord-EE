@@ -7,6 +7,7 @@ const {
     ComponentType,
     Events,
     GatewayIntentBits,
+    MessageFlags,
     Partials,
     PermissionFlagsBits,
     PermissionsBitField,
@@ -353,13 +354,13 @@ async function handleAdspowerTotpButton(interaction) {
         await interaction.reply({
             content:
                 'Authenticator is not configured. Set `DISCORD_ADSPOWER_AUTHENTICATOR_SECRET` (Base32) on Railway.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
         await trackDiscordAdspowerTotpRequest(interaction, { outcome: 'skipped_no_totp_secret' });
         return;
     }
     try {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const { code, validUntilUnix } = await generateAdspowerTotpPayload(secret);
         const left = Math.max(0, validUntilUnix - Math.floor(Date.now() / 1000));
         await interaction.editReply({
@@ -374,7 +375,10 @@ async function handleAdspowerTotpButton(interaction) {
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({ content: 'Could not generate the code. Try again in a moment.' });
             } else {
-                await interaction.reply({ content: 'Could not generate the code. Try again in a moment.', ephemeral: true });
+                await interaction.reply({
+                    content: 'Could not generate the code. Try again in a moment.',
+                    flags: MessageFlags.Ephemeral,
+                });
             }
         } catch {}
         await trackDiscordAdspowerTotpRequest(interaction, {
