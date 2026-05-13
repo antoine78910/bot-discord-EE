@@ -280,26 +280,34 @@ async function ensureAdspowerOtpPanel() {
             );
             return;
         }
-        const recent = await ch.messages.fetch({ limit: 40 }).catch(() => null);
+        // On each boot: remove our previous panel(s) in recent history, then post a fresh one.
+        const recent = await ch.messages.fetch({ limit: 50 }).catch(() => null);
+        let removed = 0;
         if (recent) {
             for (const [, msg] of recent) {
                 if (msg.author?.id === client.user.id && messageHasAdspowerOtpButton(msg)) {
-                    log('BOT', `AdsPower OTP panel already present (message ${msg.id})`);
-                    return;
+                    try {
+                        await msg.delete();
+                        removed += 1;
+                    } catch (err) {
+                        console.warn('[BOT] Could not delete old AdsPower OTP panel', msg.id, err?.message || err);
+                    }
                 }
             }
         }
+        if (removed) log('BOT', `Removed ${removed} previous AdsPower OTP panel(s) before reposting`);
+
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(ADSPOWER_TOTP_BUTTON_ID)
                 .setLabel('Get the code')
                 .setStyle(ButtonStyle.Primary)
         );
-        await ch.send({
+        const sent = await ch.send({
             content: 'Click to get your Adspower verification code',
             components: [row],
         });
-        log('BOT', `AdsPower OTP panel posted in channel ${DISCORD_ADSPOWER_OTP_CHANNEL_ID}`);
+        log('BOT', `AdsPower OTP panel posted in channel ${DISCORD_ADSPOWER_OTP_CHANNEL_ID} (message ${sent.id})`);
     } catch (e) {
         console.warn('[BOT] ensureAdspowerOtpPanel failed', e?.message || e);
     }
