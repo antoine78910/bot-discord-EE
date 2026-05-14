@@ -9,8 +9,10 @@ to inspect every ticket conversation in real time.
 - **Reads** the FAQ (`source/data/faq.md`) and an auto-generated knowledge base
   built from your public Discord channels.
 - **Replies** in the user's language (FR / EN / etc.), in 1-3 short sentences.
+- **Reads screenshots** attached in tickets and passes them to Claude vision when members send image attachments.
 - **Detects cancellation intent** and answers with a fixed message — with an
   extra price-warning paragraph for users who hold the `Ecom Agent` role.
+- **Redirects OTP/code requests** to the app instead of sending OTP codes inside ticket replies.
 - **Pings you** (`OWNER_USER_ID`) when it doesn't know what to answer, when
   the user asks for a human, or in case of any error.
 - **Logs everything** to `data/tickets-history.json` and exposes a web dashboard
@@ -87,6 +89,7 @@ CLAUDE_MODEL=claude-sonnet-4-5
 TICKET_CHANNEL_PREFIX=ticket-
 OWNER_USER_ID=your_discord_user_id
 STAFF_ROLE_ID=optional_role_id
+ECOM_AGENT_ROLE_ID=1244916325294542858
 DASHBOARD_PASSWORD=a_strong_password_you_choose
 
 # AdsPower Discord button → Next.js /admin tracking (REQUIRED or clicks are not saved)

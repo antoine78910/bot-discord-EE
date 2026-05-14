@@ -26,6 +26,9 @@ Yes — reactivate from https://ecomefficiency.com. Access comes back automatica
 ### "I can't log into a tool (Pipiads / Capcut / Canva / Brain.fm)"
 First, make sure your Ecom Efficiency subscription is active. Then try the login again from a fresh browser window. If it still fails, escalate to staff with: tool name, error screenshot, and the email you use on ecomefficiency.com.
 
+### "I need a code / OTP / authenticator code"
+Go to the app on https://ecomefficiency.com and get the OTP code there. The Discord bot should redirect users to the app instead of sending OTP codes directly in ticket replies.
+
 ### "Is my account banned / why was my role removed?"
 Roles are removed automatically when a subscription is cancelled or expires. Reactivate on the website to get the role back. If you believe this is a mistake, escalate to staff.
 
