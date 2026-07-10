@@ -25,8 +25,7 @@ const {
     runCancelledAgentsAudit,
     formatAuditReport,
 } = require('./auditCancelledAgents');
-
-let dotenv;
+const express = require('express');
 try {
     dotenv = require('dotenv');
 } catch {}
