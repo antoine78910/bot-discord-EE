@@ -166,6 +166,451 @@ function findEmailsForAgent(agent, supabaseUsers) {
   return [...deduped.values()];
 }
 
+function escapeEmailForStripeSearch(email) {
+  return String(email || '').trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function stripeCustomerSearchEmailVariants(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  const lower = s.toLowerCase();
+  const out = [];
+  const push = (e) => {
+    const t = e.trim();
+    if (!t) return;
+    if (!out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t);
+  };
+  push(s);
+  if (lower !== s) push(lower);
+  const m = lower.match(/^([^@]+)@(gmail|googlemail)\.com$/);
+  if (m) {
+    const local = m[1];
+    const noDots = local.replace(/\./g, '');
+    for (const dom of ['gmail.com', 'googlemail.com']) {
+      push(`${local}@${dom}`);
+      push(`${noDots}@${dom}`);
+    }
+  }
+  return out;
+}
+
+async function searchCustomersByEmailMerged(stripe, email) {
+  const variants = stripeCustomerSearchEmailVariants(email);
+  const byId = new Map();
+  for (const variant of variants) {
+    const q = escapeEmailForStripeSearch(variant);
+    if (!q) continue;
+    let page;
+    for (;;) {
+      const res = await stripe.customers.search({
+        query: `email:'${q}'`,
+        limit: 100,
+        ...(page ? { page } : {}),
+      });
+      for (const c of res.data || []) {
+        if (c.id) byId.set(c.id, c);
+      }
+      page = res.next_page;
+      if (!page) break;
+    }
+  }
+  return [...byId.values()];
+}
+
+async function lookupLegacyStripeForEmail(stripe, email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized || !normalized.includes('@')) {
+    return { found: false, email: normalized || null };
+  }
+
+  const customers = await searchCustomersByEmailMerged(stripe, normalized);
+  if (!customers.length) {
+    return { found: false, email: normalized };
+  }
+
+  let best = null;
+  for (const customer of customers) {
+    if (!customer.id) continue;
+    const subs = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 100 });
+    const sorted = [...subs.data].sort((a, b) => b.created - a.created);
+    for (const sub of sorted) {
+      const entry = subEntryFromStripeSub({ ...sub, customer });
+      if (!best || entry.created > best.created) best = entry;
+      break;
+    }
+  }
+
+  if (!best) {
+    return { found: false, email: normalized, customerId: customers[0]?.id || null };
+  }
+
+  return {
+    found: true,
+    email: normalized,
+    customerId: best.customerId,
+    subscriptionId: best.subscriptionId,
+    status: best.status,
+    cancelAtPeriodEnd: best.cancelAtPeriodEnd,
+    currentPeriodEnd: best.currentPeriodEnd,
+    isCanceled: isBadLegacySub({ status: best.status, cancel_at_period_end: best.cancelAtPeriodEnd }),
+    isActive: hasActiveLegacySub({ status: best.status, cancel_at_period_end: best.cancelAtPeriodEnd }),
+  };
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === ',') {
+      cells.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim());
+}
+
+function parseCsv(text) {
+  const raw = String(text || '').replace(/^\uFEFF/, '');
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (!lines.length) return { headers: [], rows: [] };
+
+  const headers = parseCsvLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvLine(lines[i]);
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = cells[j] ?? '';
+    }
+    rows.push(row);
+  }
+  return { headers, rows };
+}
+
+function normalizeHeaderKey(header) {
+  return String(header || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function pickColumnName(headers, candidates) {
+  const byNorm = new Map(headers.map((h) => [normalizeHeaderKey(h), h]));
+  for (const candidate of candidates) {
+    const hit = byNorm.get(candidate);
+    if (hit) return hit;
+  }
+  for (const header of headers) {
+    const norm = normalizeHeaderKey(header);
+    if (candidates.some((c) => norm.includes(c) || c.includes(norm))) return header;
+  }
+  return null;
+}
+
+function pickExactColumn(headers, expectedName) {
+  const target = normalizeHeaderKey(expectedName);
+  return headers.find((h) => normalizeHeaderKey(h) === target) || null;
+}
+
+function extractDiscordId(value) {
+  const s = String(value || '').trim();
+  const m = s.match(/\d{17,20}/);
+  return m ? m[0] : null;
+}
+
+async function lookupLegacyStripeForCustomerId(stripe, customerId) {
+  const id = String(customerId || '').trim();
+  if (!id) {
+    return { found: false, customerId: null };
+  }
+
+  try {
+    const customer = await stripe.customers.retrieve(id);
+    const subs = await stripe.subscriptions.list({ customer: id, status: 'all', limit: 100 });
+    const sorted = [...subs.data].sort((a, b) => b.created - a.created);
+    if (!sorted.length) {
+      return {
+        found: false,
+        customerId: id,
+        email: String(customer.email || '').trim().toLowerCase() || null,
+      };
+    }
+
+    const best = subEntryFromStripeSub({ ...sorted[0], customer });
+    return {
+      found: true,
+      customerId: id,
+      email: best.email || String(customer.email || '').trim().toLowerCase() || null,
+      subscriptionId: best.subscriptionId,
+      status: best.status,
+      cancelAtPeriodEnd: best.cancelAtPeriodEnd,
+      currentPeriodEnd: best.currentPeriodEnd,
+      isCanceled: isBadLegacySub({ status: best.status, cancel_at_period_end: best.cancelAtPeriodEnd }),
+      isActive: hasActiveLegacySub({ status: best.status, cancel_at_period_end: best.cancelAtPeriodEnd }),
+    };
+  } catch {
+    return { found: false, customerId: id };
+  }
+}
+
+function normalizeCsvCancelStatus(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s === 'cancelled' || s === 'canceled') return 'canceled';
+  if (s === 'active') return 'active';
+  if (/(cancel_at_period_end|cancel at period end|pending_cancel|pending cancel)/.test(s)) {
+    return 'cancel_at_period_end';
+  }
+  return s;
+}
+
+function csvStatusMatchesStripe(csvStatus, stripeResult) {
+  if (!csvStatus || !stripeResult?.found) return '';
+  const csvCanceled = csvStatus === 'canceled' || csvStatus === 'cancel_at_period_end';
+  const csvActive = csvStatus === 'active';
+  if (csvCanceled && stripeResult.isCanceled) return 'yes';
+  if (csvActive && stripeResult.isActive) return 'yes';
+  if (csvCanceled && stripeResult.isActive) return 'no';
+  if (csvActive && stripeResult.isCanceled) return 'no';
+  return 'partial';
+}
+
+function csvEscape(value) {
+  const s = String(value ?? '');
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function rowsToCsv(headers, rows) {
+  const lines = [headers.map(csvEscape).join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => csvEscape(row[h] ?? '')).join(','));
+  }
+  return lines.join('\n');
+}
+
+async function mapWithConcurrency(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) break;
+      out[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+const DISCORD_ID_COLUMN_CANDIDATES = ['discordid', 'discord_id', 'discord_user_id'];
+const STATUS_COLUMN_CANDIDATES = ['status', 'subscription_status'];
+const CUSTOMER_STRIPE_ID_COLUMN_CANDIDATES = ['customerstripeid', 'customer_stripe_id', 'stripe_customer_id'];
+
+const AUDIT_OUTPUT_COLUMNS = [
+  'audit_discord_id',
+  'audit_csv_status',
+  'audit_csv_status_normalized',
+  'audit_customer_stripe_id',
+  'audit_discord_in_guild',
+  'audit_discord_username',
+  'audit_has_ecom_agent_role',
+  'audit_stripe_found',
+  'audit_stripe_status',
+  'audit_stripe_cancel_at_period_end',
+  'audit_stripe_period_end',
+  'audit_stripe_subscription_id',
+  'audit_stripe_email',
+  'audit_csv_matches_stripe',
+  'audit_is_ghost_agent',
+  'audit_notes',
+];
+
+/**
+ * @param {import('discord.js').Guild} guild
+ * @param {string} csvText
+ */
+async function runCsvCancelledAgentsAudit(guild, csvText) {
+  const legacyKey = process.env.STRIPE_SECRET_KEY_LEGACY;
+  if (!legacyKey) {
+    throw new Error('STRIPE_SECRET_KEY_LEGACY is not configured');
+  }
+
+  const parsed = parseCsv(csvText);
+  if (!parsed.rows.length) {
+    throw new Error('CSV is empty or has no data rows');
+  }
+
+  const discordCol =
+    pickExactColumn(parsed.headers, 'discordId') ||
+    pickColumnName(parsed.headers, DISCORD_ID_COLUMN_CANDIDATES);
+  const statusCol =
+    pickExactColumn(parsed.headers, 'status') ||
+    pickColumnName(parsed.headers, STATUS_COLUMN_CANDIDATES);
+  const customerStripeCol =
+    pickExactColumn(parsed.headers, 'customerStripeId') ||
+    pickColumnName(parsed.headers, CUSTOMER_STRIPE_ID_COLUMN_CANDIDATES);
+
+  if (!discordCol || !statusCol || !customerStripeCol) {
+    throw new Error(
+      'CSV must include columns: discordId, status (cancelled|active), customerStripeId.'
+    );
+  }
+
+  const stripe = new Stripe(legacyKey, { apiVersion: '2025-08-27.basil' });
+  const stripeCache = new Map();
+
+  async function getStripeForCustomerId(customerId) {
+    const key = String(customerId || '').trim();
+    if (!key) return { found: false, customerId: null };
+    if (stripeCache.has(key)) return stripeCache.get(key);
+    const result = await lookupLegacyStripeForCustomerId(stripe, key);
+    stripeCache.set(key, result);
+    return result;
+  }
+
+  const enriched = await mapWithConcurrency(parsed.rows, 4, async (sourceRow) => {
+    const out = { ...sourceRow };
+    const discordId = extractDiscordId(sourceRow[discordCol]);
+    const customerStripeId = String(sourceRow[customerStripeCol] || '').trim();
+    const csvStatusRaw = String(sourceRow[statusCol] || '').trim();
+    const csvStatus = normalizeCsvCancelStatus(csvStatusRaw);
+
+    let discordInGuild = 'no';
+    let discordUsername = '';
+    let hasEcomAgentRole = 'no';
+    const notes = [];
+
+    if (discordId) {
+      try {
+        const member = await guild.members.fetch(discordId);
+        discordInGuild = 'yes';
+        discordUsername = member.user.username || '';
+        hasEcomAgentRole = member.roles.cache.has(ECOM_AGENT_ROLE_ID) ? 'yes' : 'no';
+      } catch {
+        discordInGuild = 'no';
+        hasEcomAgentRole = 'no';
+        notes.push('discord_member_not_found');
+      }
+    } else {
+      notes.push('missing_discord_id');
+    }
+
+    let stripeResult = { found: false };
+    if (customerStripeId) {
+      stripeResult = await getStripeForCustomerId(customerStripeId);
+      if (!stripeResult.found) notes.push('stripe_customer_not_found');
+    } else {
+      notes.push('missing_customer_stripe_id');
+    }
+
+    const stripeCanceled = Boolean(stripeResult.found && stripeResult.isCanceled);
+    const csvCanceled = csvStatus === 'canceled' || csvStatus === 'cancel_at_period_end';
+    const statusMatch = csvStatusMatchesStripe(csvStatus, stripeResult);
+
+    const isGhost = hasEcomAgentRole === 'yes' && stripeCanceled ? 'yes' : 'no';
+
+    if (isGhost === 'yes') {
+      notes.push('ghost_agent');
+    }
+    if (statusMatch === 'no') {
+      notes.push('csv_status_mismatch_stripe');
+    }
+    if (csvCanceled && hasEcomAgentRole === 'yes') {
+      notes.push('cancelled_still_has_role');
+    }
+
+    out.audit_discord_id = discordId || '';
+    out.audit_csv_status = csvStatusRaw;
+    out.audit_csv_status_normalized = csvStatus;
+    out.audit_customer_stripe_id = customerStripeId;
+    out.audit_discord_in_guild = discordInGuild;
+    out.audit_discord_username = discordUsername;
+    out.audit_has_ecom_agent_role = hasEcomAgentRole;
+    out.audit_stripe_found = stripeResult.found ? 'yes' : 'no';
+    out.audit_stripe_status = stripeResult.status || '';
+    out.audit_stripe_cancel_at_period_end = stripeResult.found
+      ? stripeResult.cancelAtPeriodEnd
+        ? 'yes'
+        : 'no'
+      : '';
+    out.audit_stripe_period_end = stripeResult.currentPeriodEnd || '';
+    out.audit_stripe_subscription_id = stripeResult.subscriptionId || '';
+    out.audit_stripe_email = stripeResult.email || '';
+    out.audit_csv_matches_stripe = statusMatch;
+    out.audit_is_ghost_agent = isGhost;
+    out.audit_notes = notes.join(';');
+
+    return out;
+  });
+
+  const ghostCount = enriched.filter((r) => r.audit_is_ghost_agent === 'yes').length;
+  const stillHasRoleCount = enriched.filter((r) => r.audit_has_ecom_agent_role === 'yes').length;
+  const stripeCanceledCount = enriched.filter(
+    (r) =>
+      r.audit_stripe_found === 'yes' &&
+      (r.audit_stripe_status === 'canceled' || r.audit_stripe_cancel_at_period_end === 'yes')
+  ).length;
+  const csvCancelledCount = enriched.filter((r) => r.audit_csv_status_normalized === 'canceled').length;
+  const mismatchCount = enriched.filter((r) => r.audit_csv_matches_stripe === 'no').length;
+
+  const outputHeaders = [...parsed.headers];
+  for (const col of AUDIT_OUTPUT_COLUMNS) {
+    if (!outputHeaders.includes(col)) outputHeaders.push(col);
+  }
+
+  return {
+    scannedAt: new Date().toISOString(),
+    rowCount: enriched.length,
+    ghostCount,
+    stillHasRoleCount,
+    stripeCanceledCount,
+    csvCancelledCount,
+    mismatchCount,
+    detectedColumns: { discordCol, statusCol, customerStripeCol },
+    rows: enriched,
+    csv: rowsToCsv(outputHeaders, enriched),
+  };
+}
+
+function formatCsvAuditSummary(result) {
+  const lines = [];
+  lines.push(`**CSV ghost agent audit** (${result.scannedAt})`);
+  lines.push(`Rows processed: **${result.rowCount}**`);
+  lines.push(`Detected columns: discordId=\`${result.detectedColumns.discordCol}\`, status=\`${result.detectedColumns.statusCol}\`, customerStripeId=\`${result.detectedColumns.customerStripeCol}\``);
+  lines.push(`Still have Ecom Agent role: **${result.stillHasRoleCount}**`);
+  lines.push(`CSV status cancelled (rows): **${result.csvCancelledCount}**`);
+  lines.push(`Stripe canceled / end-of-period: **${result.stripeCanceledCount}**`);
+  lines.push(`CSV vs Stripe mismatches: **${result.mismatchCount}**`);
+  lines.push(`**Ghost agents (canceled + still have role): ${result.ghostCount}**`);
+  lines.push('');
+  lines.push('Full results are attached as CSV (`audit-ghost-agents-*.csv`).');
+  return lines.join('\n');
+}
+
 /**
  * @param {import('discord.js').Guild} guild
  */
@@ -354,7 +799,9 @@ function formatAuditReport(result) {
 module.exports = {
   ECOM_AGENT_ROLE_ID,
   runCancelledAgentsAudit,
+  runCsvCancelledAgentsAudit,
   formatAuditReport,
+  formatCsvAuditSummary,
 };
 
 if (require.main === module) {

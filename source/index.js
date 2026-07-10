@@ -12,6 +12,7 @@ const {
     PermissionFlagsBits,
     PermissionsBitField,
     SlashCommandBuilder,
+    AttachmentBuilder,
 } = require('discord.js');
 const { generateSync } = require('otplib');
 const {
@@ -22,8 +23,8 @@ const {
 const fs = require('fs');
 const path = require('path');
 const {
-    runCancelledAgentsAudit,
-    formatAuditReport,
+    runCsvCancelledAgentsAudit,
+    formatCsvAuditSummary,
 } = require('./auditCancelledAgents');
 const express = require('express');
 try {
@@ -1187,12 +1188,35 @@ async function handleAuditCancelledAgentsCommand(interaction) {
         await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
         return;
     }
+
+    const attachment = interaction.options.getAttachment('csv', true);
+    const name = String(attachment?.name || '').toLowerCase();
+    if (!name.endsWith('.csv')) {
+        await interaction.reply({
+            content: 'Please upload a `.csv` file with columns: discordId, status (cancelled|active), customerStripeId.',
+            ephemeral: true,
+        });
+        return;
+    }
+    if ((attachment.size || 0) > 8 * 1024 * 1024) {
+        await interaction.reply({ content: 'CSV file is too large (max 8 MB).', ephemeral: true });
+        return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-        const result = await runCancelledAgentsAudit(interaction.guild);
-        const report = formatAuditReport(result);
-        const content = report.length > 1900 ? `${report.slice(0, 1900)}\n… (truncated)` : report;
-        await interaction.editReply({ content });
+        const csvRes = await fetch(attachment.url);
+        if (!csvRes.ok) {
+            throw new Error(`Failed to download CSV (${csvRes.status})`);
+        }
+        const csvText = await csvRes.text();
+        const result = await runCsvCancelledAgentsAudit(interaction.guild, csvText);
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const file = new AttachmentBuilder(Buffer.from(result.csv, 'utf8'), {
+            name: `audit-ghost-agents-${stamp}.csv`,
+        });
+        const summary = formatCsvAuditSummary(result);
+        await interaction.editReply({ content: summary, files: [file] });
     } catch (error) {
         console.error('[BOT] audit-cancelled-agents failed:', error);
         await interaction.editReply({
@@ -1239,8 +1263,14 @@ function getSlashCommands() {
             ),
         new SlashCommandBuilder()
             .setName(AUDIT_CANCELLED_AGENTS_COMMAND)
-            .setDescription('List Ecom Agents with canceled legacy Stripe (Sublaunch) subscriptions.')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+            .setDescription('Upload a CSV to audit cancel status, Discord Ecom Agent role, and legacy Stripe.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addAttachmentOption((option) =>
+                option
+                    .setName('csv')
+                    .setDescription('CSV with discordId, status (cancelled|active), customerStripeId')
+                    .setRequired(true)
+            ),
     ];
 }
 
