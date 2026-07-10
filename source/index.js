@@ -21,7 +21,10 @@ const {
 } = require('./support');
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
+const {
+    runCancelledAgentsAudit,
+    formatAuditReport,
+} = require('./auditCancelledAgents');
 
 let dotenv;
 try {
@@ -98,6 +101,7 @@ const AI_GREETING_DELAY_MS = 2500;
 const AI_TOGGLE_COMMAND = 'ai-toggle';
 const REINDEX_COMMAND = 'reindex-knowledge';
 const TEACH_COMMAND = 'teach';
+const AUDIT_CANCELLED_AGENTS_COMMAND = 'audit-cancelled-agents';
 const LEARNING_MIN_ANSWER_CHARS = 25;
 const LEARNING_MAX_ANSWER_CHARS = 1500;
 const HISTORY_SAVE_DEBOUNCE_MS = 500;
@@ -1179,6 +1183,25 @@ async function handleTeachCommand(interaction) {
     });
 }
 
+async function handleAuditCancelledAgentsCommand(interaction) {
+    if (!interaction.guild) {
+        await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
+        return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+        const result = await runCancelledAgentsAudit(interaction.guild);
+        const report = formatAuditReport(result);
+        const content = report.length > 1900 ? `${report.slice(0, 1900)}\n… (truncated)` : report;
+        await interaction.editReply({ content });
+    } catch (error) {
+        console.error('[BOT] audit-cancelled-agents failed:', error);
+        await interaction.editReply({
+            content: `Audit failed: ${error?.message || 'unknown error'}`,
+        });
+    }
+}
+
 // === Slash commands ===
 function getSlashCommands() {
     return [
@@ -1215,6 +1238,10 @@ function getSlashCommands() {
                     .setDescription('The answer the AI should give next time')
                     .setRequired(true)
             ),
+        new SlashCommandBuilder()
+            .setName(AUDIT_CANCELLED_AGENTS_COMMAND)
+            .setDescription('List Ecom Agents with canceled legacy Stripe (Sublaunch) subscriptions.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     ];
 }
 
@@ -1283,6 +1310,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleReindexCommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === TEACH_COMMAND) {
             await handleTeachCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AUDIT_CANCELLED_AGENTS_COMMAND) {
+            await handleAuditCancelledAgentsCommand(interaction);
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);

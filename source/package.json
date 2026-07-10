@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
+    "@supabase/supabase-js": "^2.55.0",
     "otplib": "^13.4.0",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "stripe": "^18.4.0"
   }
 }
