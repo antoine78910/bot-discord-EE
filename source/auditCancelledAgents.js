@@ -611,6 +611,96 @@ function formatCsvAuditSummary(result) {
   return lines.join('\n');
 }
 
+const REMOVE_ROLE_OUTPUT_COLUMNS = [
+  'discordId',
+  'email',
+  'discord_username',
+  'customerStripeId',
+  'csv_status',
+  'stripe_status',
+  'role_removed',
+  'error',
+];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Run audit, then remove Ecom Agent role from ghost rows (Stripe canceled + still has role).
+ * @param {import('discord.js').Guild} guild
+ * @param {string} csvText
+ */
+async function removeGhostRolesFromCsv(guild, csvText) {
+  const audit = await runCsvCancelledAgentsAudit(guild, csvText);
+  const targets = audit.rows.filter((row) => row.audit_is_ghost_agent === 'yes');
+
+  const results = [];
+  for (const row of targets) {
+    const discordId = String(row.audit_discord_id || '').trim();
+    const entry = {
+      discordId,
+      email: row.audit_stripe_email || '',
+      discord_username: row.audit_discord_username || '',
+      customerStripeId: row.audit_customer_stripe_id || '',
+      csv_status: row.audit_csv_status || '',
+      stripe_status: row.audit_stripe_status || '',
+      role_removed: 'no',
+      error: '',
+    };
+
+    if (!discordId) {
+      entry.error = 'missing_discord_id';
+      results.push(entry);
+      continue;
+    }
+
+    try {
+      const member = await guild.members.fetch(discordId);
+      if (member.roles.cache.has(ECOM_AGENT_ROLE_ID)) {
+        await member.roles.remove(
+          ECOM_AGENT_ROLE_ID,
+          'Legacy Stripe subscription canceled — Ecom Efficiency cleanup'
+        );
+        entry.role_removed = 'yes';
+      } else {
+        entry.role_removed = 'already_removed';
+      }
+    } catch (e) {
+      entry.error = e?.message || 'remove_failed';
+    }
+
+    results.push(entry);
+    await sleep(350);
+  }
+
+  return {
+    scannedAt: new Date().toISOString(),
+    ghostCount: targets.length,
+    removedCount: results.filter((r) => r.role_removed === 'yes').length,
+    alreadyRemovedCount: results.filter((r) => r.role_removed === 'already_removed').length,
+    failedCount: results.filter((r) => r.error).length,
+    rows: results,
+    csv: rowsToCsv(REMOVE_ROLE_OUTPUT_COLUMNS, results),
+  };
+}
+
+function formatRemoveRolesSummary(result) {
+  const lines = [];
+  lines.push(`**Ecom Agent role removal** (${result.scannedAt})`);
+  lines.push(`Ghost targets (canceled + had role): **${result.ghostCount}**`);
+  lines.push(`Roles removed: **${result.removedCount}**`);
+  if (result.alreadyRemovedCount) {
+    lines.push(`Already without role: **${result.alreadyRemovedCount}**`);
+  }
+  if (result.failedCount) {
+    lines.push(`Failed: **${result.failedCount}**`);
+  }
+  lines.push('');
+  lines.push('CSV with discordId + email attached (`removed-cancelled-agents-*.csv`).');
+  return lines.join('\n');
+}
+
 /**
  * @param {import('discord.js').Guild} guild
  */
@@ -800,8 +890,10 @@ module.exports = {
   ECOM_AGENT_ROLE_ID,
   runCancelledAgentsAudit,
   runCsvCancelledAgentsAudit,
+  removeGhostRolesFromCsv,
   formatAuditReport,
   formatCsvAuditSummary,
+  formatRemoveRolesSummary,
 };
 
 if (require.main === module) {

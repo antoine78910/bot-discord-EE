@@ -24,7 +24,9 @@ const fs = require('fs');
 const path = require('path');
 const {
     runCsvCancelledAgentsAudit,
+    removeGhostRolesFromCsv,
     formatCsvAuditSummary,
+    formatRemoveRolesSummary,
 } = require('./auditCancelledAgents');
 const express = require('express');
 try {
@@ -102,6 +104,7 @@ const AI_TOGGLE_COMMAND = 'ai-toggle';
 const REINDEX_COMMAND = 'reindex-knowledge';
 const TEACH_COMMAND = 'teach';
 const AUDIT_CANCELLED_AGENTS_COMMAND = 'audit-cancelled-agents';
+const REMOVE_CANCELLED_AGENTS_COMMAND = 'remove-cancelled-agents';
 const LEARNING_MIN_ANSWER_CHARS = 25;
 const LEARNING_MAX_ANSWER_CHARS = 1500;
 const HISTORY_SAVE_DEBOUNCE_MS = 500;
@@ -1183,33 +1186,31 @@ async function handleTeachCommand(interaction) {
     });
 }
 
+async function readCsvAttachment(interaction) {
+    const attachment = interaction.options.getAttachment('csv', true);
+    const name = String(attachment?.name || '').toLowerCase();
+    if (!name.endsWith('.csv')) {
+        throw new Error('Please upload a `.csv` file with columns: discordId, status (cancelled|active), customerStripeId.');
+    }
+    if ((attachment.size || 0) > 8 * 1024 * 1024) {
+        throw new Error('CSV file is too large (max 8 MB).');
+    }
+    const csvRes = await fetch(attachment.url);
+    if (!csvRes.ok) {
+        throw new Error(`Failed to download CSV (${csvRes.status})`);
+    }
+    return csvRes.text();
+}
+
 async function handleAuditCancelledAgentsCommand(interaction) {
     if (!interaction.guild) {
         await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
         return;
     }
 
-    const attachment = interaction.options.getAttachment('csv', true);
-    const name = String(attachment?.name || '').toLowerCase();
-    if (!name.endsWith('.csv')) {
-        await interaction.reply({
-            content: 'Please upload a `.csv` file with columns: discordId, status (cancelled|active), customerStripeId.',
-            ephemeral: true,
-        });
-        return;
-    }
-    if ((attachment.size || 0) > 8 * 1024 * 1024) {
-        await interaction.reply({ content: 'CSV file is too large (max 8 MB).', ephemeral: true });
-        return;
-    }
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-        const csvRes = await fetch(attachment.url);
-        if (!csvRes.ok) {
-            throw new Error(`Failed to download CSV (${csvRes.status})`);
-        }
-        const csvText = await csvRes.text();
+        const csvText = await readCsvAttachment(interaction);
         const result = await runCsvCancelledAgentsAudit(interaction.guild, csvText);
         const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
         const file = new AttachmentBuilder(Buffer.from(result.csv, 'utf8'), {
@@ -1221,6 +1222,39 @@ async function handleAuditCancelledAgentsCommand(interaction) {
         console.error('[BOT] audit-cancelled-agents failed:', error);
         await interaction.editReply({
             content: `Audit failed: ${error?.message || 'unknown error'}`,
+        });
+    }
+}
+
+async function handleRemoveCancelledAgentsCommand(interaction) {
+    if (!interaction.guild) {
+        await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
+        return;
+    }
+
+    const me = interaction.guild.members.me;
+    if (!me?.permissions?.has(PermissionsBitField.Flags.ManageRoles)) {
+        await interaction.reply({
+            content: 'Bot is missing **Manage Roles** permission.',
+            ephemeral: true,
+        });
+        return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+        const csvText = await readCsvAttachment(interaction);
+        const result = await removeGhostRolesFromCsv(interaction.guild, csvText);
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const file = new AttachmentBuilder(Buffer.from(result.csv, 'utf8'), {
+            name: `removed-cancelled-agents-${stamp}.csv`,
+        });
+        const summary = formatRemoveRolesSummary(result);
+        await interaction.editReply({ content: summary, files: [file] });
+    } catch (error) {
+        console.error('[BOT] remove-cancelled-agents failed:', error);
+        await interaction.editReply({
+            content: `Role removal failed: ${error?.message || 'unknown error'}`,
         });
     }
 }
@@ -1269,6 +1303,16 @@ function getSlashCommands() {
                 option
                     .setName('csv')
                     .setDescription('CSV with discordId, status (cancelled|active), customerStripeId')
+                    .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName(REMOVE_CANCELLED_AGENTS_COMMAND)
+            .setDescription('Remove Ecom Agent role from canceled users in CSV (ghost cleanup).')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addAttachmentOption((option) =>
+                option
+                    .setName('csv')
+                    .setDescription('Same Sublaunch CSV: discordId, status, customerStripeId')
                     .setRequired(true)
             ),
     ];
@@ -1341,6 +1385,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleTeachCommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === AUDIT_CANCELLED_AGENTS_COMMAND) {
             await handleAuditCancelledAgentsCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === REMOVE_CANCELLED_AGENTS_COMMAND) {
+            await handleRemoveCancelledAgentsCommand(interaction);
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);
