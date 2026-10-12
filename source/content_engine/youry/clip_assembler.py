@@ -174,8 +174,15 @@ def _list_files(folder: Path, extensions: set[str]) -> list[Path]:
 
 
 def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
-    if not hooks_text_dir().is_dir():
+    choices = _text_hook_choices()
+    if not choices:
         return None, None
+    return rng.choice(choices)
+
+
+def _text_hook_choices() -> list[tuple[Path, str]]:
+    if not hooks_text_dir().is_dir():
+        return []
 
     choices: list[tuple[Path, str]] = []
     for item in hooks_text_dir().iterdir():
@@ -184,10 +191,7 @@ def _pick_text_hook(rng: random.Random) -> tuple[Path | None, str | None]:
                 choices.append((path, item.name))
         elif item.is_file() and item.suffix.lower() in TEXT_EXT | VIDEO_EXT:
             choices.append((item, "default"))
-
-    if not choices:
-        return None, None
-    return rng.choice(choices)
+    return sorted(choices)
 
 
 def _list_text_hooks() -> list[Path]:
@@ -200,6 +204,37 @@ def _list_text_hooks() -> list[Path]:
         elif item.is_file() and item.suffix.lower() in TEXT_EXT | VIDEO_EXT:
             paths.append(item)
     return paths
+
+
+RECENT_PICKS_PATH = Path(
+    os.getenv("YOURY_RECENT_PICKS_PATH", "").strip()
+    or Path(os.getenv("TMPDIR") or os.getenv("TEMP") or "/tmp") / "youry_recent_picks.json"
+)
+
+
+def _load_recent() -> dict:
+    try:
+        return json.loads(RECENT_PICKS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _pick_fresh(rng: random.Random, items: list, key: str, recent: dict):
+    """Random pick that skips the most recently used half of the pool (no back-to-back repeats)."""
+    if not items:
+        return None
+    names = [_pick_name(item) for item in items]
+    history = [name for name in recent.get(key, []) if name in names]
+    blocked = set(history[-(len(items) // 2):]) if len(items) > 1 else set()
+    pool = [item for item, name in zip(items, names) if name not in blocked] or items
+    choice = rng.choice(pool)
+    recent[key] = (history + [_pick_name(choice)])[-len(items):]
+    return choice
+
+
+def _pick_name(item) -> str:
+    path = item[0] if isinstance(item, tuple) else item
+    return f"{path.parent.name}/{path.name}"
 
 
 def _random_recipe(rng: random.Random) -> ClipRecipe:
@@ -220,12 +255,22 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
             f"No audio in {music_dir()} — add at least one music track."
         )
 
-    text_hook, text_category = _pick_text_hook(rng)
+    recent = _load_recent()
+    text_choices = _text_hook_choices()
+    picked_text = _pick_fresh(rng, text_choices, "text_hooks", recent)
+    text_hook, text_category = picked_text if picked_text else (None, None)
+    hook = _pick_fresh(rng, hooks, "hooks", recent)
+    body = _pick_fresh(rng, bodies, "bodies", recent)
+    music = _pick_fresh(rng, tracks, "music", recent)
+    try:
+        RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
+    except OSError:
+        pass
 
     return ClipRecipe(
-        hook=rng.choice(hooks),
-        body=rng.choice(bodies),
-        music=rng.choice(tracks),
+        hook=hook,
+        body=body,
+        music=music,
         text_hook=text_hook,
         text_category=text_category,
         scale=rng.uniform(1.0, 1.05),
