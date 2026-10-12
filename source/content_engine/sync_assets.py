@@ -6,7 +6,7 @@ Copy generator assets from the local source projects into this engine.
 
 Sources:
   Variator/          templates, layouts, step logos, fonts, audio, captions.txt
-  bot youry/         hook clips (assets/clips/hooks)
+  bot youry/         clip_assembler.py + assets/clips (hooks, hooks_text, body, music)
   bot jelly/carousel carousel engine, fonts, emoji, photos, avatars
 
 Avatars are re-saved as high-quality JPEG (the carousel canvas is 1080x1920,
@@ -82,11 +82,17 @@ def sync_variator(bureau: Path) -> None:
     print(f"  audio:     {_copy_tree(src / 'audio_path', dest / 'audio_path', AUDIO_EXTS)}")
 
 
-def sync_hooks(bureau: Path) -> None:
-    src = bureau / "bot youry" / "assets" / "clips" / "hooks"
-    dest = ENGINE_ROOT / "hooks"
-    print(f"Hooks <- {src}")
-    print(f"  clips: {_copy_tree(src, dest, VIDEO_EXTS)}")
+def sync_youry(bureau: Path) -> None:
+    src = bureau / "bot youry"
+    dest = ENGINE_ROOT / "youry"
+    print(f"YouRy <- {src}")
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src / "clip_assembler.py", dest / "clip_assembler.py")
+    clips_src, clips_dest = src / "assets" / "clips", dest / "assets" / "clips"
+    print(f"  hooks:      {_copy_tree(clips_src / 'hooks', clips_dest / 'hooks', VIDEO_EXTS)}")
+    print(f"  hooks_text: {_copy_tree(clips_src / 'hooks_text', clips_dest / 'hooks_text', IMAGE_EXTS | VIDEO_EXTS)}")
+    print(f"  body:       {_copy_tree(clips_src / 'body', clips_dest / 'body', VIDEO_EXTS)}")
+    print(f"  music:      {_copy_tree(clips_src / 'music', clips_dest / 'music', AUDIO_EXTS)}")
 
 
 def sync_carousel(bureau: Path) -> None:
@@ -114,14 +120,14 @@ def main() -> None:
     parser.add_argument("--bureau", type=Path, default=DEFAULT_BUREAU)
     parser.add_argument(
         "--only",
-        choices=("variator", "hooks", "carousel"),
+        choices=("variator", "youry", "carousel"),
         help="Sync a single source",
     )
     args = parser.parse_args()
 
     steps = {
         "variator": sync_variator,
-        "hooks": sync_hooks,
+        "youry": sync_youry,
         "carousel": sync_carousel,
     }
     for name, step in steps.items():

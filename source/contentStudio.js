@@ -23,7 +23,7 @@ const ENGINE_CLI = path.join(ENGINE_DIR, 'cli.py');
 const AVATARS_DIR = path.join(ENGINE_DIR, 'carousel', 'assets', 'avatars');
 const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
-const MAX_ITEMS = 3;
+const MAX_ITEMS = 5;
 const MAX_INPUT_VIDEO_BYTES = 200 * 1024 * 1024;
 const COLORS = ['purple', 'pink', 'blue', 'green', 'cream'];
 
@@ -56,16 +56,24 @@ function getContentSlashCommand() {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand((sub) =>
             sub
-                .setName('video')
-                .setDescription('Hook clip + Variator body + caption + music, with iPhone metadata.')
+                .setName('variator')
+                .setDescription('Variator video: caption banner + template with app steps + music.')
                 .addIntegerOption((option) =>
-                    option.setName('count').setDescription('How many videos (1-3)').setMinValue(1).setMaxValue(MAX_ITEMS)
+                    option.setName('count').setDescription(`How many videos (1-${MAX_ITEMS})`).setMinValue(1).setMaxValue(MAX_ITEMS)
                 )
                 .addStringOption((option) =>
                     option
                         .setName('caption')
                         .setDescription('Force a caption (default: weighted pick from captions.txt)')
                         .setMaxLength(140)
+                )
+        )
+        .addSubcommand((sub) =>
+            sub
+                .setName('youry')
+                .setDescription('YouRy clip: hook + body + music + text hook, with random variations.')
+                .addIntegerOption((option) =>
+                    option.setName('count').setDescription(`How many clips (1-${MAX_ITEMS})`).setMinValue(1).setMaxValue(MAX_ITEMS)
                 )
         )
         .addSubcommand((sub) => {
@@ -160,7 +168,7 @@ function runEngine(args, onProgress) {
         child.stderr.on('data', (chunk) => {
             const text = chunk.toString('utf8');
             if (onProgress) {
-                for (const match of text.matchAll(/^\[(?:video|carousel) (\d+)\/(\d+)\]/gm)) {
+                for (const match of text.matchAll(/^\[(?:variator|youry|carousel) (\d+)\/(\d+)\]/gm)) {
                     Promise.resolve(onProgress(Number(match[1]), Number(match[2]))).catch(() => {});
                 }
             }
@@ -199,21 +207,19 @@ function errorLines(result) {
     return errors.map((error) => `⚠️ ${String(error).slice(0, 300)}`).join('\n');
 }
 
+const VIDEO_LABELS = { variator: '🎞️ Variator video', youry: '✂️ YouRy clip' };
+
 /** `send` posts one message (interaction.followUp, thread.send, ...). */
 async function deliverVideos(send, result, prefix = '') {
     const items = result.items || [];
     for (const [index, item] of items.entries()) {
         const file = new AttachmentBuilder(item.path, { name: path.basename(item.path) });
-        const steps = (item.steps || []).map((step, i) => `${i + 1}. ${step}`).join(' · ');
+        const label = VIDEO_LABELS[item.type] || '🎬 Video';
         await send({
             content: [
-                `${prefix}🎬 **Video ${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
-                `**Caption:** ${item.caption}`,
-                `Hook \`${item.hook}\` · template \`${item.template}\` · music \`${item.music || 'none'}\``,
-                steps ? `Steps: ${steps}` : '',
-            ]
-                .filter(Boolean)
-                .join('\n'),
+                `${prefix}${label} **${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
+                ...(item.details || []),
+            ].join('\n'),
             files: [file],
         });
     }
@@ -246,18 +252,25 @@ async function downloadAttachment(attachment, dest) {
     fs.writeFileSync(dest, buffer);
 }
 
-async function runVideo(interaction, jobDir) {
-    const count = interaction.options.getInteger('count') || 1;
-    const caption = interaction.options.getString('caption') || '';
-    const args = ['video', '--count', String(count), '--out', jobDir, '--max-mb', String(uploadLimitMb(interaction.guild))];
-    if (caption) args.push('--caption', caption);
-    await interaction.editReply(`⏳ Rendering **${count}** video${count > 1 ? 's' : ''} (~15 s each)…`);
-    const result = await runEngine(args);
-    const done = (result.items || []).length;
-    await interaction.editReply(
-        [`✅ **${done}/${count}** video${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
-    );
-    await deliverVideos((payload) => interaction.followUp(payload), result);
+function videoArgs(kind, count, jobDir, guild, caption = '') {
+    const args = [kind, '--count', String(count), '--out', jobDir, '--max-mb', String(uploadLimitMb(guild))];
+    if (caption && kind === 'variator') args.push('--caption', caption);
+    return args;
+}
+
+function videoRunner(kind) {
+    return async (interaction, jobDir) => {
+        const count = interaction.options.getInteger('count') || 1;
+        const caption = interaction.options.getString('caption') || '';
+        const label = kind === 'variator' ? 'Variator video' : 'YouRy clip';
+        await interaction.editReply(`⏳ Rendering **${count}** ${label}${count > 1 ? 's' : ''}…`);
+        const result = await runEngine(videoArgs(kind, count, jobDir, interaction.guild, caption));
+        const done = (result.items || []).length;
+        await interaction.editReply(
+            [`✅ **${done}/${count}** ${label}${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
+        );
+        await deliverVideos((payload) => interaction.followUp(payload), result);
+    };
 }
 
 async function runCarousel(interaction, jobDir) {
@@ -320,7 +333,8 @@ async function runStatus(interaction) {
         [
             `**Content engine** ${result.ok ? '✅' : '❌'}`,
             `FFmpeg: ${status.ffmpeg ? '✅' : '❌ missing'}`,
-            `Hook clips: **${status.hooks ?? 0}**`,
+            `Variator: **${status.variator?.templates ?? 0}** templates · **${status.variator?.music ?? 0}** sounds`,
+            `YouRy: **${status.youry?.hooks ?? 0}** hooks · **${status.youry?.bodies ?? 0}** bodies · **${status.youry?.music ?? 0}** tracks · **${status.youry?.text_hooks ?? 0}** text hooks`,
             `Avatar packs: ${(status.avatar_packs || []).map((pack) => `\`${pack}\``).join(', ') || 'none'}`,
             `Sample caption: ${status.sample_caption || '—'}`,
             errorLines(result),
@@ -348,7 +362,12 @@ async function handleContentCommand(interaction) {
         return;
     }
 
-    const handlers = { video: runVideo, carousel: runCarousel, cleanvideo: runCleanVideo };
+    const handlers = {
+        variator: videoRunner('variator'),
+        youry: videoRunner('youry'),
+        carousel: runCarousel,
+        cleanvideo: runCleanVideo,
+    };
     const handler = handlers[subcommand];
     if (!handler) {
         await interaction.editReply('Unknown subcommand.');
@@ -386,4 +405,5 @@ module.exports = {
     removeDir,
     runEngine,
     uploadLimitMb,
+    videoArgs,
 };

@@ -39,6 +39,7 @@ source/data/server-knowledge.meta.json
 __pycache__/
 *.pyc
 source/content_engine/out/
+source/content_engine/youry/assets/clips/output/
 
 # Coverage / temp
 coverage/

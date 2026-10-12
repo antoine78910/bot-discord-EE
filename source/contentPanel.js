@@ -1,6 +1,7 @@
 /**
- * "Create Content" panel (YouRy-style) for the EE content bot.
- * Panel button -> ephemeral picker (video / carousel / batch) -> render queue -> private thread per user.
+ * "Generate Content" panel (YouRy-style) for the EE content bot.
+ * Panel button -> ephemeral picker (Variator / YouRy clip / Carousel + quantity)
+ * -> render queue -> private thread per user.
  */
 const {
     ActionRowBuilder,
@@ -9,11 +10,10 @@ const {
     ChannelType,
     EmbedBuilder,
     MessageFlags,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
+    StringSelectMenuBuilder,
 } = require('discord.js');
 const {
+    MAX_ITEMS,
     deliverCarousels,
     deliverVideos,
     enqueue,
@@ -22,26 +22,25 @@ const {
     makeJobDir,
     removeDir,
     runEngine,
-    uploadLimitMb,
+    videoArgs,
 } = require('./contentStudio');
 
 const PANEL_CHANNEL_ID = process.env.CONTENT_PANEL_CHANNEL_ID || '1556165419184816219';
 const PANEL_COLOR = 0x8b5cf6;
 const PROGRESS_COLOR = 0x5865f2;
 const DONE_COLOR = 0x57f287;
-const MAX_BATCH = 5;
 
 const IDS = {
     open: 'ee_content_open',
-    video: 'ee_content_video',
-    carousel: 'ee_content_carousel',
-    batchVideo: 'ee_content_batch_video',
-    batchCarousel: 'ee_content_batch_carousel',
-    modalPrefix: 'ee_content_modal:',
-    countInput: 'ee_content_count',
+    quantity: 'ee_content_qty',
+    makePrefix: 'ee_content_make:',
 };
 
-const KIND_LABEL = { video: 'video', carousel: 'carousel' };
+const KINDS = {
+    variator: { label: 'Variator video', button: 'Variator', emoji: '🎞️', style: ButtonStyle.Success },
+    youry: { label: 'YouRy clip', button: 'YouRy clip', emoji: '✂️', style: ButtonStyle.Primary },
+    carousel: { label: 'carousel', button: 'Carousel', emoji: '🖼️', style: ButtonStyle.Secondary },
+};
 
 function panelEmbed() {
     return new EmbedBuilder()
@@ -49,13 +48,13 @@ function panelEmbed() {
         .setColor(PANEL_COLOR)
         .setDescription(
             [
-                'Click **Create Content**, then pick what you want.',
+                'Click **Generate Content**, then choose what to create:',
                 '',
-                '🎬 **Video**: hook clip + Ecom Efficiency tools + caption + music',
+                '🎞️ **Variator**: caption banner + template with the app steps + trending sound',
+                '✂️ **YouRy clip**: hook + body + music + text hook, random variations',
                 '🖼️ **Carousel**: 5 slides (avatar hook, 3 tools, Ecom Efficiency recap) + ZIP',
-                '📦 **Batch**: up to 5 at once, all different',
                 '',
-                'Every export is unique and carries iPhone 15 Pro metadata.',
+                'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
                 'Your files land in your private thread under this channel.',
             ].join('\n')
         );
@@ -64,47 +63,36 @@ function panelEmbed() {
 function panelComponents() {
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(IDS.open).setLabel('Create Content').setEmoji('✨').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId(IDS.open).setLabel('Generate Content').setEmoji('🎬').setStyle(ButtonStyle.Success)
         ),
     ];
 }
 
-function pickerComponents() {
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(IDS.video).setLabel('Video').setEmoji('🎬').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(IDS.carousel).setLabel('Carousel').setEmoji('🖼️').setStyle(ButtonStyle.Primary)
-        ),
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(IDS.batchVideo).setLabel('Batch videos').setEmoji('📦').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(IDS.batchCarousel).setLabel('Batch carousels').setEmoji('📦').setStyle(ButtonStyle.Secondary)
-        ),
-    ];
-}
-
-function batchModal(kind) {
-    return new ModalBuilder()
-        .setCustomId(`${IDS.modalPrefix}${kind}`)
-        .setTitle(kind === 'video' ? 'Batch videos' : 'Batch carousels')
-        .addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId(IDS.countInput)
-                    .setLabel(`How many? (max ${MAX_BATCH})`)
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('3')
-                    .setValue('3')
-                    .setMinLength(1)
-                    .setMaxLength(1)
-                    .setRequired(true)
-            )
+function pickerComponents(quantity) {
+    const select = new StringSelectMenuBuilder()
+        .setCustomId(IDS.quantity)
+        .setPlaceholder('How many?')
+        .addOptions(
+            Array.from({ length: MAX_ITEMS }, (_, i) => ({
+                label: `${i + 1} at once`,
+                value: String(i + 1),
+                default: i + 1 === quantity,
+            }))
         );
+    const buttons = Object.entries(KINDS).map(([kind, meta]) =>
+        new ButtonBuilder()
+            .setCustomId(`${IDS.makePrefix}${kind}:${quantity}`)
+            .setLabel(quantity > 1 ? `${meta.button} ×${quantity}` : meta.button)
+            .setEmoji(meta.emoji)
+            .setStyle(meta.style)
+    );
+    return [new ActionRowBuilder().addComponents(select), new ActionRowBuilder().addComponents(...buttons)];
 }
 
 function progressEmbed(kind, current, total) {
     return new EmbedBuilder()
         .setColor(PROGRESS_COLOR)
-        .setDescription(`⏳ **Generating ${KIND_LABEL[kind]} ${current}/${total}...**`);
+        .setDescription(`⏳ **Generating ${KINDS[kind].label} ${current}/${total}...**`);
 }
 
 /** Post the panel once; on restart, edit the existing panel instead of re-posting it. */
@@ -183,7 +171,7 @@ async function getDeliveryTarget(channel, member) {
                     .setColor(PANEL_COLOR)
                     .setTitle('🎬 Your content workspace')
                     .setDescription(
-                        `Hey ${member} — your generated videos and carousels will appear here.\n` +
+                        `Hey ${member} — your Variator videos, YouRy clips and carousels will appear here.\n` +
                             'Download carousel ZIPs to keep the iPhone metadata (Discord previews strip it).'
                     ),
             ],
@@ -208,32 +196,31 @@ async function startJob(interaction, kind, count) {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const target = await getDeliveryTarget(channel, interaction.member);
+    const label = KINDS[kind].label;
 
     const { position, run } = enqueue(async () => {
         const jobDir = makeJobDir();
         try {
             await interaction.editReply({ content: '', embeds: [progressEmbed(kind, 1, count)] }).catch(() => {});
             const args =
-                kind === 'video'
-                    ? ['video', '--count', String(count), '--out', jobDir, '--max-mb', String(uploadLimitMb(interaction.guild))]
-                    : ['carousel', '--count', String(count), '--out', jobDir];
+                kind === 'carousel'
+                    ? ['carousel', '--count', String(count), '--out', jobDir]
+                    : videoArgs(kind, count, jobDir, interaction.guild);
             const result = await runEngine(args, (current, total) =>
                 interaction.editReply({ embeds: [progressEmbed(kind, current, total)] })
             );
 
             const done = (result.items || []).length;
             const send = (payload) => target.send(payload);
-            if (kind === 'video') await deliverVideos(send, result, `${interaction.user} `);
-            else await deliverCarousels(send, result, `${interaction.user} `);
+            if (kind === 'carousel') await deliverCarousels(send, result, `${interaction.user} `);
+            else await deliverVideos(send, result, `${interaction.user} `);
 
             const plural = count > 1 ? 's' : '';
             const embed = new EmbedBuilder()
                 .setColor(done ? DONE_COLOR : 0xed4245)
                 .setDescription(
                     [
-                        done
-                            ? `✅ **Complete — ${done}/${count} ${KIND_LABEL[kind]}${plural}**\nPosted in ${target}`
-                            : `❌ **Generation failed**`,
+                        done ? `✅ **Complete — ${done}/${count} ${label}${plural}**\nPosted in ${target}` : '❌ **Generation failed**',
                         errorLines(result),
                     ]
                         .filter(Boolean)
@@ -258,44 +245,29 @@ async function startJob(interaction, kind, count) {
 
 /** Returns true when the interaction belonged to the panel. */
 async function handlePanelInteraction(interaction) {
-    if (interaction.isButton()) {
-        switch (interaction.customId) {
-            case IDS.open:
-                if (!isStaff(interaction)) {
-                    await interaction.reply({ content: 'Content generation is reserved for staff.', flags: MessageFlags.Ephemeral });
-                    return true;
-                }
-                await interaction.reply({
-                    content: '**What do you want to create?**',
-                    components: pickerComponents(),
-                    flags: MessageFlags.Ephemeral,
-                });
-                return true;
-            case IDS.video:
-                await startJob(interaction, 'video', 1);
-                return true;
-            case IDS.carousel:
-                await startJob(interaction, 'carousel', 1);
-                return true;
-            case IDS.batchVideo:
-                await interaction.showModal(batchModal('video'));
-                return true;
-            case IDS.batchCarousel:
-                await interaction.showModal(batchModal('carousel'));
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith(IDS.modalPrefix)) {
-        const kind = interaction.customId.slice(IDS.modalPrefix.length) === 'carousel' ? 'carousel' : 'video';
-        const raw = interaction.fields.getTextInputValue(IDS.countInput).trim();
-        const count = Number(raw);
-        if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH) {
-            await interaction.reply({ content: `Enter a whole number between 1 and ${MAX_BATCH}.`, flags: MessageFlags.Ephemeral });
+    if (interaction.isButton() && interaction.customId === IDS.open) {
+        if (!isStaff(interaction)) {
+            await interaction.reply({ content: 'Content generation is reserved for staff.', flags: MessageFlags.Ephemeral });
             return true;
         }
+        await interaction.reply({
+            content: '**What do you want to generate?** Pick a quantity, then a type.',
+            components: pickerComponents(1),
+            flags: MessageFlags.Ephemeral,
+        });
+        return true;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === IDS.quantity) {
+        const quantity = Math.max(1, Math.min(MAX_ITEMS, Number(interaction.values[0]) || 1));
+        await interaction.update({ components: pickerComponents(quantity) });
+        return true;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(IDS.makePrefix)) {
+        const [kind, rawCount] = interaction.customId.slice(IDS.makePrefix.length).split(':');
+        if (!KINDS[kind]) return false;
+        const count = Math.max(1, Math.min(MAX_ITEMS, Number(rawCount) || 1));
         await startJob(interaction, kind, count);
         return true;
     }

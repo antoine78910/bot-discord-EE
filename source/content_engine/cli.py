@@ -2,7 +2,8 @@
 EE content engine CLI — called by the Discord bot (contentStudio.js).
 
     python cli.py status
-    python cli.py video --count 2 --out /tmp/job
+    python cli.py variator --count 2 --out /tmp/job
+    python cli.py youry --count 2 --out /tmp/job
     python cli.py carousel --count 1 --avatar femme_noir --out /tmp/job
     python cli.py cleanvideo --input in.mp4 --out /tmp/job
 
@@ -38,7 +39,7 @@ def _seed() -> int:
 
 def cmd_status(_args) -> dict:
     from ee_engine.ee_carousel import avatar_packs, color_names
-    from ee_engine.ee_video import list_hooks, pick_captions
+    from ee_engine.videos import pick_captions, variator_status, youry_status
 
     return {
         "ok": True,
@@ -46,7 +47,8 @@ def cmd_status(_args) -> dict:
         "errors": [],
         "status": {
             "ffmpeg": resolve_ffmpeg_bin() or "",
-            "hooks": len(list_hooks()),
+            "variator": variator_status(),
+            "youry": youry_status(),
             "avatar_packs": avatar_packs(),
             "colors": color_names(),
             "sample_caption": pick_captions(1)[0],
@@ -54,29 +56,52 @@ def cmd_status(_args) -> dict:
     }
 
 
-def cmd_video(args) -> dict:
-    from ee_engine.ee_video import pick_captions, render_ee_video
-
+def _render_many(kind: str, count: int, render_one) -> dict:
     if not ffmpeg_available():
         raise EngineError("FFmpeg not found on the bot host.")
-    count = max(1, min(MAX_COUNT, args.count))
-    captions = [args.caption] * count if args.caption else pick_captions(count)
     items, errors = [], []
-    for index, caption in enumerate(captions, start=1):
-        _log(f"[video {index}/{count}] {caption}")
+    for index in range(1, count + 1):
+        _log(f"[{kind} {index}/{count}]")
         try:
-            result = render_ee_video(
-                args.out,
-                caption=caption,
-                seed=_seed(),
-                max_bytes=int(args.max_mb * 1024 * 1024),
-                iphone_signature=not args.no_iphone,
-            )
-            items.append(result.to_json())
+            items.append(render_one(index).to_json())
         except Exception as exc:
-            errors.append(f"Video {index} failed: {exc}")
+            errors.append(f"{kind.capitalize()} {index} failed: {exc}")
             _log(traceback.format_exc())
     return {"ok": bool(items), "items": items, "errors": errors}
+
+
+def cmd_variator(args) -> dict:
+    from ee_engine.videos import pick_captions, render_variator_video
+
+    count = max(1, min(MAX_COUNT, args.count))
+    captions = [args.caption] * count if args.caption else pick_captions(count)
+    return _render_many(
+        "variator",
+        count,
+        lambda index: render_variator_video(
+            args.out,
+            caption=captions[index - 1],
+            seed=_seed(),
+            max_bytes=int(args.max_mb * 1024 * 1024),
+            iphone_signature=not args.no_iphone,
+        ),
+    )
+
+
+def cmd_youry(args) -> dict:
+    from ee_engine.videos import render_youry_clip
+
+    count = max(1, min(MAX_COUNT, args.count))
+    return _render_many(
+        "youry",
+        count,
+        lambda _index: render_youry_clip(
+            args.out,
+            seed=_seed(),
+            max_bytes=int(args.max_mb * 1024 * 1024),
+            iphone_signature=not args.no_iphone,
+        ),
+    )
 
 
 def cmd_carousel(args) -> dict:
@@ -150,12 +175,18 @@ def main() -> int:
 
     sub.add_parser("status")
 
-    video = sub.add_parser("video")
-    video.add_argument("--count", type=int, default=1)
-    video.add_argument("--caption", default="")
-    video.add_argument("--out", type=Path, required=True)
-    video.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB)
-    video.add_argument("--no-iphone", action="store_true")
+    variator = sub.add_parser("variator")
+    variator.add_argument("--count", type=int, default=1)
+    variator.add_argument("--caption", default="")
+    variator.add_argument("--out", type=Path, required=True)
+    variator.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB)
+    variator.add_argument("--no-iphone", action="store_true")
+
+    youry = sub.add_parser("youry")
+    youry.add_argument("--count", type=int, default=1)
+    youry.add_argument("--out", type=Path, required=True)
+    youry.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB)
+    youry.add_argument("--no-iphone", action="store_true")
 
     carousel = sub.add_parser("carousel")
     carousel.add_argument("--count", type=int, default=1)
@@ -176,7 +207,8 @@ def main() -> int:
 
     handlers = {
         "status": cmd_status,
-        "video": cmd_video,
+        "variator": cmd_variator,
+        "youry": cmd_youry,
         "carousel": cmd_carousel,
         "cleanvideo": cmd_cleanvideo,
     }
