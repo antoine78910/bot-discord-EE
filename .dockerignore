@@ -17,6 +17,11 @@ source/data/tickets-history.json
 source/data/server-knowledge.md
 source/data/server-knowledge.meta.json
 
+# Content engine caches / local renders
+**/__pycache__
+**/*.pyc
+source/content_engine/out
+
 # Editor / OS
 .vscode
 .idea

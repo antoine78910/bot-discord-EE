@@ -1,0 +1,16 @@
+{
+  "//": "Layout pour template7.png",
+  "text_positions": [
+    [0.3, 0.03],
+    [0.45, 0.32],
+    [0.05, 0.54],
+    [0.63, 0.66]
+  ],
+  "font_size_ratio": 0.019,
+  "app_centers": {
+    "find_app": [0.2, 0.15, 0.55, 0.28],
+    "create_store_app": [0.85, 0.43, 0.55, 0.28],
+    "create_ai_ugc_app": [0.15, 0.65, 0.55, 0.28],
+    "sales": [0.75, 0.79, 0.96, 0.18]
+  }
+}

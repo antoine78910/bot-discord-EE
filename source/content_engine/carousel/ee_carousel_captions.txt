@@ -1,0 +1,169 @@
+# EcomEfficiency carousel captions — same markup as the JobShift carousel.
+# One line = one pâté. | = line break inside a pâté.
+# ! = white box / black text.  !!segment = white text on the pâté color.
+# ^ = pin this pâté to the top (step slides keep the app logo card below).
+# ~ = small badge.  {{a|b|c}} = pick one at random.
+# Blocks are separated by ---. Slides: hooks (1) step1 (2) step2 (3) step3 (4) recap (5).
+
+=== hooks ===
+
+Start {{AI Dropshipping|AI dropshipping}}|with these tools 👇
+
+---
+
+!!Stop scrolling!
+These 4 tools are running|businesses {{silently|in silence}} 🤫
+
+---
+
+Start AI Dropshipping|in 2026 with these tools:
+
+---
+
+These tools will|!!multiply|your bank balance 💸
+
+---
+
+Dropshipping was hard|until I found {{this|these}} 👀
+
+---
+
+These 4 tools will make|AI Dropshipping {{easier|10x easier}}
+
+---
+
+How to start AI|Dropshipping in 2026 ?
+
+---
+
+These 4 will create a|!!million dollar|brand 🚀
+
+---
+
+You missed bitcoin in 2009
+!Don't miss this in 2026
+
+---
+
+!!AI Dropshipping|Cheat sheet 📝
+
+---
+
+Mom: You're not serious|about your career 😒
+!Me:
+
+---
+
+AI Dropshipping|!!Blueprint
+~(swipe 👉)
+
+---
+
+Tool to hack|AI Dropshipping 🧠
+
+---
+
+Complete blueprint to start|AI Dropshipping 📲
+
+---
+
+POV: Still sleeping while|someone is a millionaire|at 19 😴
+
+---
+
+This combo is {{literally|basically}}|a cheat code for|Dropshipping 🎮
+
+---
+
+While u are watching ww3|!I am doing this:
+
+---
+
+This feels {{illegal|ILLEGAL}}|but isn't 🤫
+
+---
+
+How to make 500k before|summer without going|to jail 😭
+
+---
+
+This feels illegal|to know 👀
+
+---
+
+!!Laziest way|to make $10k|before summer 🏖️
+
+=== step1 ===
+
+^!Step 1
+^Find a {{winning product|winner}}|{{with AI|in 2 minutes}} 🔎
+^{{No more guessing|Stop guessing}} — {{the AI|it}} shows|what's {{already selling|selling right now}}
+
+---
+
+^!1. Find your winner
+^{{Let AI find|AI finds}} you a|{{winning|viral}} product 🔥
+^{{Trending|Proven}} products,|real sales data
+
+---
+
+^!Step 1 — Product research
+^Find products that|{{actually sell|already sell}} 📈
+^{{Spy on|Look at}} winning stores|and ads in one place
+
+=== step2 ===
+
+^!Step 2
+^Create your store|with AI in {{5 min|5 minutes}} ⚡
+^{{Paste the product|Drop the product link}},|the AI builds the page
+
+---
+
+^!2. Launch your store
+^{{Build|Launch}} your store|{{with AI|in minutes}} 🛒
+^{{Theme|Product page}} + copy|done for you
+
+---
+
+^!Step 2 — Store
+^AI builds your|{{Shopify|online}} store 🏪
+^{{No designer|No coding}} needed
+
+=== step3 ===
+
+^!Step 3
+^Create your AI UGC|{{ads|videos}} 🎬
+^{{Realistic|Viral}} creators,|{{no filming|zero camera}}
+
+---
+
+^!3. Make the ads
+^Generate your|AI UGC {{army|content}} 🤖
+^Post it on TikTok|& {{Instagram|IG}}
+
+---
+
+^!Step 3 — Content
+^{{AI creators|AI UGC}} that|{{convert|sell}} 💥
+^{{Test|Launch}} 10 ads|{{a day|per day}}
+
+=== recap ===
+
+^!All these tools in ONE
+^!!Ecom Efficiency
+^{{Every|All the}} AI tools for|dropshipping in {{one|a single}}|subscription 💜
+^~(link in bio)
+
+---
+
+^Step 4: Make bank 💰
+^!!Ecom Efficiency
+^{{All the tools|Every tool}} above,|{{one dashboard|one login}}
+^~(link in bio 👆)
+
+---
+
+^!Recap
+^1. Find a winner|2. AI store|3. AI UGC|4. {{Cash in|Make bank}} 💸
+^!!All in Ecom Efficiency
+^~(link in bio)

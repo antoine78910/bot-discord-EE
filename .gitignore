@@ -35,6 +35,11 @@ source/data/tickets-history.json
 source/data/server-knowledge.md
 source/data/server-knowledge.meta.json
 
+# Content engine (Python)
+__pycache__/
+*.pyc
+source/content_engine/out/
+
 # Coverage / temp
 coverage/
 .tmp/

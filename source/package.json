@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "start:content": "node contentBot.js",
     "dev": "node index.js"
   },
   "dependencies": {

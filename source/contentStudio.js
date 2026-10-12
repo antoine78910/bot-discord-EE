@@ -1,0 +1,371 @@
+/**
+ * /ee-content — staff-only content studio backed by the Python engine in ./content_engine.
+ *   video      YouRy hook + Variator body + caption + music, iPhone 15 Pro .MOV signature
+ *   carousel   5-slide EE carousel (JobShift engine), iPhone EXIF JPGs + ZIP
+ *   cleanvideo strip metadata + subtle variation + iPhone signature on an uploaded video
+ *   status     engine health (FFmpeg, hooks, avatar packs)
+ */
+const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const {
+    AttachmentBuilder,
+    MessageFlags,
+    PermissionFlagsBits,
+    PermissionsBitField,
+    SlashCommandBuilder,
+} = require('discord.js');
+
+const CONTENT_COMMAND = 'ee-content';
+const ENGINE_DIR = path.resolve(__dirname, 'content_engine');
+const ENGINE_CLI = path.join(ENGINE_DIR, 'cli.py');
+const AVATARS_DIR = path.join(ENGINE_DIR, 'carousel', 'assets', 'avatars');
+const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_ITEMS = 3;
+const MAX_INPUT_VIDEO_BYTES = 200 * 1024 * 1024;
+const COLORS = ['purple', 'pink', 'blue', 'green', 'cream'];
+
+const STAFF_ROLE_IDS = [
+    process.env.STAFF_ROLE_ID,
+    process.env.TICKET_STAFF_ROLE_ID,
+    ...String(process.env.CONTENT_STAFF_ROLE_IDS || '').split(','),
+]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+
+function listAvatarPacks() {
+    try {
+        return fs
+            .readdirSync(AVATARS_DIR, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name)
+            .sort()
+            .slice(0, 25);
+    } catch {
+        return [];
+    }
+}
+
+function getContentSlashCommand() {
+    const packs = listAvatarPacks();
+    return new SlashCommandBuilder()
+        .setName(CONTENT_COMMAND)
+        .setDescription('Staff: generate EcomEfficiency videos and carousels.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addSubcommand((sub) =>
+            sub
+                .setName('video')
+                .setDescription('Hook clip + Variator body + caption + music, with iPhone metadata.')
+                .addIntegerOption((option) =>
+                    option.setName('count').setDescription('How many videos (1-3)').setMinValue(1).setMaxValue(MAX_ITEMS)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName('caption')
+                        .setDescription('Force a caption (default: weighted pick from captions.txt)')
+                        .setMaxLength(140)
+                )
+        )
+        .addSubcommand((sub) => {
+            sub.setName('carousel')
+                .setDescription('5-slide EE carousel (avatar hook + tools + Ecom Efficiency), iPhone EXIF.')
+                .addIntegerOption((option) =>
+                    option.setName('count').setDescription('How many carousels (1-3)').setMinValue(1).setMaxValue(MAX_ITEMS)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName('color')
+                        .setDescription('Text box color (default: purple)')
+                        .addChoices(...COLORS.map((color) => ({ name: color, value: color })))
+                );
+            if (packs.length) {
+                sub.addStringOption((option) =>
+                    option
+                        .setName('avatar')
+                        .setDescription('Avatar pack for slide 1 (default: femme_noir)')
+                        .addChoices(...packs.map((pack) => ({ name: pack, value: pack })))
+                );
+            }
+            return sub;
+        })
+        .addSubcommand((sub) =>
+            sub
+                .setName('cleanvideo')
+                .setDescription('Strip metadata, add subtle variations and an iPhone 15 Pro signature.')
+                .addAttachmentOption((option) =>
+                    option.setName('video').setDescription('MP4 / MOV file').setRequired(true)
+                )
+                .addBooleanOption((option) =>
+                    option.setName('variation').setDescription('Apply subtle zoom/color/cut variations (default: yes)')
+                )
+        )
+        .addSubcommand((sub) => sub.setName('status').setDescription('Check the content engine (FFmpeg, assets).'));
+}
+
+function isStaff(interaction) {
+    const member = interaction.member;
+    if (!member) return false;
+    const permissions = member.permissions instanceof PermissionsBitField
+        ? member.permissions
+        : new PermissionsBitField(BigInt(member.permissions || 0));
+    if (permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+    const roles = member.roles?.cache
+        ? [...member.roles.cache.keys()]
+        : Array.isArray(member.roles) ? member.roles : [];
+    return roles.some((roleId) => STAFF_ROLE_IDS.includes(roleId));
+}
+
+/** Upload ceiling for this guild, minus a safety margin (MB). */
+function uploadLimitMb(guild) {
+    const tier = guild?.premiumTier || 0;
+    if (tier >= 3) return 95;
+    if (tier >= 2) return 48;
+    return 9.5;
+}
+
+// One render at a time: the engine is CPU-bound and shares the bot's container.
+let queueTail = Promise.resolve();
+let queueLength = 0;
+
+function enqueue(job) {
+    queueLength += 1;
+    const position = queueLength;
+    const run = queueTail.then(job, job).finally(() => {
+        queueLength -= 1;
+    });
+    queueTail = run.catch(() => {});
+    return { position, run };
+}
+
+function runEngine(args) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(PYTHON_BIN, [ENGINE_CLI, ...args], {
+            cwd: ENGINE_DIR,
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+            windowsHide: true,
+        });
+        let stdout = '';
+        let stderr = '';
+        const timer = setTimeout(() => {
+            child.kill('SIGKILL');
+            reject(new Error('Content engine timed out.'));
+        }, JOB_TIMEOUT_MS);
+
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString('utf8');
+        });
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString('utf8');
+            if (stderr.length > 20000) stderr = stderr.slice(-20000);
+        });
+        child.on('error', (error) => {
+            clearTimeout(timer);
+            reject(new Error(`Could not start Python (${PYTHON_BIN}): ${error.message}`));
+        });
+        child.on('close', () => {
+            clearTimeout(timer);
+            const line = stdout.trim().split('\n').filter(Boolean).pop() || '';
+            try {
+                resolve(JSON.parse(line));
+            } catch {
+                console.error('[CONTENT] engine stderr:', stderr.slice(-3000));
+                reject(new Error('Content engine returned no result (check bot logs).'));
+            }
+        });
+    });
+}
+
+function makeJobDir() {
+    const dir = path.join(os.tmpdir(), 'ee-content', `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function removeDir(dir) {
+    fs.rm(dir, { recursive: true, force: true }, () => {});
+}
+
+function errorLines(result) {
+    const errors = Array.isArray(result?.errors) ? result.errors : [];
+    return errors.map((error) => `⚠️ ${String(error).slice(0, 300)}`).join('\n');
+}
+
+async function deliverVideos(interaction, result) {
+    const items = result.items || [];
+    for (const [index, item] of items.entries()) {
+        const file = new AttachmentBuilder(item.path, { name: path.basename(item.path) });
+        const steps = (item.steps || []).map((step, i) => `${i + 1}. ${step}`).join(' · ');
+        await interaction.followUp({
+            content: [
+                `🎬 **Video ${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
+                `**Caption:** ${item.caption}`,
+                `Hook \`${item.hook}\` · template \`${item.template}\` · music \`${item.music || 'none'}\``,
+                steps ? `Steps: ${steps}` : '',
+            ]
+                .filter(Boolean)
+                .join('\n'),
+            files: [file],
+        });
+    }
+}
+
+async function deliverCarousels(interaction, result) {
+    const items = result.items || [];
+    for (const [index, item] of items.entries()) {
+        const slides = (item.slides || []).map(
+            (slide) => new AttachmentBuilder(slide, { name: path.basename(slide) })
+        );
+        await interaction.followUp({
+            content: [
+                `🖼️ **Carousel ${index + 1}/${items.length}** — avatar \`${item.avatar_pack}\` · color \`${item.color}\` · 📱 iPhone EXIF`,
+                `**Hook:** ${item.hook}`,
+            ].join('\n'),
+            files: slides,
+        });
+        await interaction.followUp({
+            content: '📦 Original JPGs (download the ZIP, Discord previews are recompressed and lose the EXIF):',
+            files: [new AttachmentBuilder(item.zip, { name: path.basename(item.zip) })],
+        });
+    }
+}
+
+async function downloadAttachment(attachment, dest) {
+    const response = await fetch(attachment.url);
+    if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(dest, buffer);
+}
+
+async function runVideo(interaction, jobDir) {
+    const count = interaction.options.getInteger('count') || 1;
+    const caption = interaction.options.getString('caption') || '';
+    const args = ['video', '--count', String(count), '--out', jobDir, '--max-mb', String(uploadLimitMb(interaction.guild))];
+    if (caption) args.push('--caption', caption);
+    await interaction.editReply(`⏳ Rendering **${count}** video${count > 1 ? 's' : ''} (~15 s each)…`);
+    const result = await runEngine(args);
+    const done = (result.items || []).length;
+    await interaction.editReply(
+        [`✅ **${done}/${count}** video${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
+    );
+    await deliverVideos(interaction, result);
+}
+
+async function runCarousel(interaction, jobDir) {
+    const count = interaction.options.getInteger('count') || 1;
+    const args = ['carousel', '--count', String(count), '--out', jobDir];
+    const avatar = interaction.options.getString('avatar');
+    const color = interaction.options.getString('color');
+    if (avatar) args.push('--avatar', avatar);
+    if (color) args.push('--color', color);
+    await interaction.editReply(`⏳ Building **${count}** carousel${count > 1 ? 's' : ''}…`);
+    const result = await runEngine(args);
+    const done = (result.items || []).length;
+    await interaction.editReply(
+        [`✅ **${done}/${count}** carousel${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
+    );
+    await deliverCarousels(interaction, result);
+}
+
+async function runCleanVideo(interaction, jobDir) {
+    const attachment = interaction.options.getAttachment('video', true);
+    const name = String(attachment.name || '').toLowerCase();
+    if (!/\.(mp4|mov|m4v)$/.test(name) && !String(attachment.contentType || '').startsWith('video/')) {
+        await interaction.editReply('Please upload an `.mp4` or `.mov` video.');
+        return;
+    }
+    if ((attachment.size || 0) > MAX_INPUT_VIDEO_BYTES) {
+        await interaction.editReply('Video is too large (max 200 MB).');
+        return;
+    }
+    const input = path.join(jobDir, `input${path.extname(name) || '.mp4'}`);
+    await interaction.editReply('⏳ Downloading and cleaning the video…');
+    await downloadAttachment(attachment, input);
+
+    const args = ['cleanvideo', '--input', input, '--out', path.join(jobDir, 'out'), '--max-mb', String(uploadLimitMb(interaction.guild))];
+    if (interaction.options.getBoolean('variation') === false) args.push('--no-variation');
+    const result = await runEngine(args);
+    const item = (result.items || [])[0];
+    if (!item) {
+        await interaction.editReply(`❌ Clean failed.\n${errorLines(result)}`);
+        return;
+    }
+    const removed = (item.tags_removed || []).slice(0, 15).map((tag) => `\`${tag}\``).join(', ') || 'none';
+    await interaction.editReply('✅ Video cleaned.');
+    await interaction.followUp({
+        content: [
+            `🧼 **Clean video** — ${item.duration_before}s → ${item.duration_after}s · 📱 iPhone 15 Pro signature`,
+            `**Removed tags:** ${removed}`,
+            item.variation ? `**Variation:** ${item.variation}` : '',
+        ]
+            .filter(Boolean)
+            .join('\n'),
+        files: [new AttachmentBuilder(item.path, { name: path.basename(item.path) })],
+    });
+}
+
+async function runStatus(interaction) {
+    const result = await runEngine(['status']);
+    const status = result.status || {};
+    await interaction.editReply(
+        [
+            `**Content engine** ${result.ok ? '✅' : '❌'}`,
+            `FFmpeg: ${status.ffmpeg ? '✅' : '❌ missing'}`,
+            `Hook clips: **${status.hooks ?? 0}**`,
+            `Avatar packs: ${(status.avatar_packs || []).map((pack) => `\`${pack}\``).join(', ') || 'none'}`,
+            `Sample caption: ${status.sample_caption || '—'}`,
+            errorLines(result),
+        ]
+            .filter(Boolean)
+            .join('\n')
+    );
+}
+
+async function handleContentCommand(interaction) {
+    if (!interaction.guild) {
+        await interaction.reply({ content: 'Run this in the server.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    if (!isStaff(interaction)) {
+        await interaction.reply({ content: 'This command is reserved for staff.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+    await interaction.deferReply();
+
+    if (subcommand === 'status') {
+        await runStatus(interaction);
+        return;
+    }
+
+    const handlers = { video: runVideo, carousel: runCarousel, cleanvideo: runCleanVideo };
+    const handler = handlers[subcommand];
+    if (!handler) {
+        await interaction.editReply('Unknown subcommand.');
+        return;
+    }
+
+    const { position, run } = enqueue(async () => {
+        const jobDir = makeJobDir();
+        try {
+            await handler(interaction, jobDir);
+        } catch (error) {
+            console.error(`[CONTENT] ${subcommand} failed:`, error);
+            await interaction.editReply(`❌ ${subcommand} failed: ${error?.message || 'unknown error'}`).catch(() => {});
+        } finally {
+            removeDir(jobDir);
+        }
+    });
+    if (position > 1) {
+        await interaction.editReply(`🕒 Queued (position ${position}). Another render is running…`);
+    }
+    await run;
+}
+
+module.exports = {
+    CONTENT_COMMAND,
+    getContentSlashCommand,
+    handleContentCommand,
+};
