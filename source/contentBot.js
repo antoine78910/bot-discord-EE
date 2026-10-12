@@ -1,9 +1,9 @@
 /**
  * Dedicated EE content bot (separate Discord application from the ticket bot).
- * Runs only /ee-content. Start with `node contentBot.js` (Railway: own service, start command).
+ * Runs only /ee-content, registered on every server the bot is in.
+ * Start with `node contentBot.js` (Railway: own service with BOT_ENTRY=contentBot.js).
  *
- * Env: CONTENT_BOT_TOKEN (required), DISCORD_SERVER_ID / ECOM_EFFICIENCY_SERVER_ID,
- *      STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS, PYTHON_BIN, FFMPEG_PATH.
+ * Env: CONTENT_BOT_TOKEN (required), STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS, PYTHON_BIN, FFMPEG_PATH.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,9 +24,6 @@ try {
 const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = require('./contentStudio');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
-const GUILD_IDS = [process.env.DISCORD_SERVER_ID || process.env.ECOM_EFFICIENCY_SERVER_ID, ...String(process.env.CONTENT_GUILD_IDS || '').split(',')]
-    .map((id) => String(id || '').trim())
-    .filter(Boolean);
 
 if (!TOKEN) {
     console.error('[CONTENT-BOT] CONTENT_BOT_TOKEN is missing.');
@@ -37,14 +34,15 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 async function registerCommands() {
     const command = getContentSlashCommand().toJSON();
-    const targets = GUILD_IDS.length ? GUILD_IDS : [...client.guilds.cache.keys()];
-    for (const guildId of new Set(targets)) {
+    const joined = [...client.guilds.cache.values()];
+    console.log(`[CONTENT-BOT] In ${joined.length} server(s): ${joined.map((g) => `${g.name} (${g.id})`).join(', ') || 'none'}`);
+    for (const guildId of joined.map((g) => g.id)) {
         try {
             const guild = await client.guilds.fetch(guildId);
             await guild.commands.set([command]);
             console.log(`[CONTENT-BOT] /${CONTENT_COMMAND} registered on ${guild.name}`);
         } catch (error) {
-            console.warn(`[CONTENT-BOT] Could not register on guild ${guildId} (is the bot invited?):`, error?.message || error);
+            console.warn(`[CONTENT-BOT] Could not register on guild ${guildId}:`, error?.message || error);
         }
     }
 }
