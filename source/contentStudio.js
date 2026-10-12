@@ -139,7 +139,8 @@ function enqueue(job) {
     return { position, run };
 }
 
-function runEngine(args) {
+/** onProgress(current, total) fires on the engine's "[video 2/5]" / "[carousel 2/5]" stderr lines. */
+function runEngine(args, onProgress) {
     return new Promise((resolve, reject) => {
         const child = spawn(PYTHON_BIN, [ENGINE_CLI, ...args], {
             cwd: ENGINE_DIR,
@@ -157,7 +158,13 @@ function runEngine(args) {
             stdout += chunk.toString('utf8');
         });
         child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString('utf8');
+            const text = chunk.toString('utf8');
+            if (onProgress) {
+                for (const match of text.matchAll(/^\[(?:video|carousel) (\d+)\/(\d+)\]/gm)) {
+                    Promise.resolve(onProgress(Number(match[1]), Number(match[2]))).catch(() => {});
+                }
+            }
+            stderr += text;
             if (stderr.length > 20000) stderr = stderr.slice(-20000);
         });
         child.on('error', (error) => {
@@ -192,14 +199,15 @@ function errorLines(result) {
     return errors.map((error) => `⚠️ ${String(error).slice(0, 300)}`).join('\n');
 }
 
-async function deliverVideos(interaction, result) {
+/** `send` posts one message (interaction.followUp, thread.send, ...). */
+async function deliverVideos(send, result, prefix = '') {
     const items = result.items || [];
     for (const [index, item] of items.entries()) {
         const file = new AttachmentBuilder(item.path, { name: path.basename(item.path) });
         const steps = (item.steps || []).map((step, i) => `${i + 1}. ${step}`).join(' · ');
-        await interaction.followUp({
+        await send({
             content: [
-                `🎬 **Video ${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
+                `${prefix}🎬 **Video ${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
                 `**Caption:** ${item.caption}`,
                 `Hook \`${item.hook}\` · template \`${item.template}\` · music \`${item.music || 'none'}\``,
                 steps ? `Steps: ${steps}` : '',
@@ -211,20 +219,20 @@ async function deliverVideos(interaction, result) {
     }
 }
 
-async function deliverCarousels(interaction, result) {
+async function deliverCarousels(send, result, prefix = '') {
     const items = result.items || [];
     for (const [index, item] of items.entries()) {
         const slides = (item.slides || []).map(
             (slide) => new AttachmentBuilder(slide, { name: path.basename(slide) })
         );
-        await interaction.followUp({
+        await send({
             content: [
-                `🖼️ **Carousel ${index + 1}/${items.length}** — avatar \`${item.avatar_pack}\` · color \`${item.color}\` · 📱 iPhone EXIF`,
+                `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — avatar \`${item.avatar_pack}\` · color \`${item.color}\` · 📱 iPhone EXIF`,
                 `**Hook:** ${item.hook}`,
             ].join('\n'),
             files: slides,
         });
-        await interaction.followUp({
+        await send({
             content: '📦 Original JPGs (download the ZIP, Discord previews are recompressed and lose the EXIF):',
             files: [new AttachmentBuilder(item.zip, { name: path.basename(item.zip) })],
         });
@@ -249,7 +257,7 @@ async function runVideo(interaction, jobDir) {
     await interaction.editReply(
         [`✅ **${done}/${count}** video${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
     );
-    await deliverVideos(interaction, result);
+    await deliverVideos((payload) => interaction.followUp(payload), result);
 }
 
 async function runCarousel(interaction, jobDir) {
@@ -265,7 +273,7 @@ async function runCarousel(interaction, jobDir) {
     await interaction.editReply(
         [`✅ **${done}/${count}** carousel${count > 1 ? 's' : ''} ready.`, errorLines(result)].filter(Boolean).join('\n')
     );
-    await deliverCarousels(interaction, result);
+    await deliverCarousels((payload) => interaction.followUp(payload), result);
 }
 
 async function runCleanVideo(interaction, jobDir) {
@@ -366,6 +374,16 @@ async function handleContentCommand(interaction) {
 
 module.exports = {
     CONTENT_COMMAND,
+    MAX_ITEMS,
+    deliverCarousels,
+    deliverVideos,
+    enqueue,
+    errorLines,
     getContentSlashCommand,
     handleContentCommand,
+    isStaff,
+    makeJobDir,
+    removeDir,
+    runEngine,
+    uploadLimitMb,
 };

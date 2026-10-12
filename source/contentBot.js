@@ -22,6 +22,7 @@ try {
 } catch {}
 
 const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = require('./contentStudio');
+const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
 
@@ -50,6 +51,9 @@ async function registerCommands() {
 client.once(Events.ClientReady, async (readyClient) => {
     console.log(`[CONTENT-BOT] Logged in as ${readyClient.user.tag}`);
     await registerCommands();
+    await publishContentPanel(readyClient).catch((error) => {
+        console.warn('[CONTENT-PANEL] publish failed:', error?.message || error);
+    });
 });
 
 client.on(Events.GuildCreate, () => {
@@ -57,9 +61,12 @@ client.on(Events.GuildCreate, () => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand() || interaction.commandName !== CONTENT_COMMAND) return;
     try {
-        await handleContentCommand(interaction);
+        if (interaction.isChatInputCommand() && interaction.commandName === CONTENT_COMMAND) {
+            await handleContentCommand(interaction);
+            return;
+        }
+        await handlePanelInteraction(interaction);
     } catch (error) {
         console.error('[CONTENT-BOT] interaction error:', error);
         try {
