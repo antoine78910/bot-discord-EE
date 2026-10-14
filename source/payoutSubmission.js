@@ -43,25 +43,25 @@ const STAFF_ROLE_IDS = [
 
 function submissionEmbed() {
     return new EmbedBuilder()
-        .setTitle('ðŸ’° Payout Submission')
+        .setTitle('💰 Payout Submission')
         .setColor(EMBED_COLOR)
         .setDescription(
             'Submit your account analytics by clicking the button below.\n\n' +
                 'A private ticket channel will open just between you and the admins. ' +
-                'Drop your view counts, video links, and screenshots there â€” ' +
+                'Drop your view counts, video links, and screenshots there — ' +
                 'payouts process within 48 hours.'
         );
 }
 
 function ticketEmbed(user, ticketId) {
     return new EmbedBuilder()
-        .setTitle('ðŸ’¸ Payout Submission')
+        .setTitle('💸 Payout Submission')
         .setColor(EMBED_COLOR)
         .setDescription(
-            `Hey ${user} â€” welcome to your payout ticket.\n\n` +
+            `Hey ${user} — welcome to your payout ticket.\n\n` +
                 '**Please reply in this channel with:**\n' +
                 '1. Your Instagram / TikTok handle (UGC account)\n' +
-                '2. Period covered (e.g. Oct 1â€“15, 2026)\n' +
+                '2. Period covered (e.g. Oct 1–15, 2026)\n' +
                 '3. Total views generated across all posts\n' +
                 '4. Screen recording of your account analytics\n\n' +
                 "We'll verify and process within **48 hours**. " +
@@ -72,14 +72,14 @@ function ticketEmbed(user, ticketId) {
 
 function submitRow() {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(IDS.submit).setLabel('Submit Payout').setEmoji('ðŸ’¸').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId(IDS.submit).setLabel('Submit Payout').setEmoji('💸').setStyle(ButtonStyle.Success)
     );
 }
 
 function ticketRow() {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(IDS.paid).setLabel('Mark Paid & Close').setEmoji('âœ…').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(IDS.close).setLabel('Close Ticket').setEmoji('ðŸ”’').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId(IDS.paid).setLabel('Mark Paid & Close').setEmoji('✅').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(IDS.close).setLabel('Close Ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger)
     );
 }
 
@@ -185,7 +185,7 @@ async function openTicket(interaction) {
         (c) => c?.type === ChannelType.GuildText && c.name === name && c.permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel)
     );
     if (existing) {
-        await interaction.reply({ content: `âœ… Your payout ticket is ready: ${existing}`, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: `✅ Your payout ticket is ready: ${existing}`, flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -212,7 +212,7 @@ async function openTicket(interaction) {
         components: [ticketRow()],
         allowedMentions: { roles: NOTIFY_ROLE_ID ? [NOTIFY_ROLE_ID] : [], users: REVIEWER_ID ? [REVIEWER_ID] : [] },
     });
-    await interaction.editReply(`âœ… Your payout ticket is ready: ${ticket}`);
+    await interaction.editReply(`✅ Your payout ticket is ready: ${ticket}`);
 }
 
 async function closeTicket(interaction, paid) {
@@ -226,10 +226,10 @@ async function closeTicket(interaction, paid) {
         const openerId = ticketOpenerId(channel);
         const opener = openerId ? await interaction.client.users.fetch(openerId).catch(() => null) : null;
         await opener
-            ?.send('âœ… Your payout has been processed and sent. Thanks for posting with **Ecom Efficiency**!')
+            ?.send('✅ Your payout has been processed and sent. Thanks for posting with **Ecom Efficiency**!')
             .catch(() => {});
     }
-    await interaction.reply({ content: paid ? 'Ticket marked as paid. Closingâ€¦' : 'Closing ticketâ€¦', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: paid ? 'Ticket marked as paid. Closing…' : 'Closing ticket…', flags: MessageFlags.Ephemeral });
     await channel.delete(`${paid ? 'Paid & closed' : 'Closed'} by ${interaction.user.tag}`).catch(() => {});
 }
 
