@@ -14,7 +14,8 @@
 
 Slides 1, 3, 6, 8 and 10 rotate between a few wordings (see SLIDE_LINES).
 
-Slide 1 is a random screenshot from carousel/assets/photos/results. The other slides
+Slide 1 is a random screenshot from carousel/assets/photos/results; slide 10 uses the
+custom "result" photos half of the time and another results screenshot otherwise. The other slides
 come from carousel/assets/photos/dead, matched by name: "kalodata.JPG",
 "kalodata (2).JPG", … are variants of the same slide and one is picked at random.
 
@@ -24,6 +25,7 @@ A slide with no lines is exported as a plain photo.
 
 from __future__ import annotations
 
+import json
 import random
 import re
 import shutil
@@ -50,6 +52,9 @@ PACK = "dead"
 PLACEHOLDER = (16, 16, 18)
 
 RESULTS_FOLDER = "results"
+# Share of carousels whose last slide uses the custom "result" photos of the dead pack;
+# the rest use any screenshot from the results folder.
+CUSTOM_RESULT_SHARE = 0.5
 
 # "folder:<name>" = random photo from carousel/assets/photos/<name>; otherwise a name group in the dead pack.
 SLIDE_ORDER = (
@@ -138,20 +143,24 @@ def _pick_photos(gc, rng: random.Random) -> list[Path | None]:
     for path in sorted(photos, key=lambda p: p.name.lower()):
         groups.setdefault(_group_key(path), []).append(path)
 
+    from youry import clip_assembler as ca
+
+    results = sorted(gc._collect_images(gc.PHOTOS_DIR / RESULTS_FOLDER), key=lambda p: p.name.lower())
+    recent = ca._load_recent()
     picked: list[Path | None] = []
-    used: dict[str, set[Path]] = {}
     for key in SLIDE_ORDER:
         if key.startswith("folder:"):
-            options = sorted(gc._collect_images(gc.PHOTOS_DIR / key.split(":", 1)[1]), key=lambda p: p.name.lower())
+            options, history = sorted(gc._collect_images(gc.PHOTOS_DIR / key.split(":", 1)[1]), key=lambda p: p.name.lower()), "dead:results"
+        elif key == "result" and results and (not groups.get(key) or rng.random() >= CUSTOM_RESULT_SHARE):
+            options, history = results, "dead:results"
         else:
-            options = groups.get(key, [])
-        if not options:
-            picked.append(None)
-            continue
-        fresh = [p for p in options if p not in used.get(key, set())] or options
-        choice = rng.choice(fresh)
-        used.setdefault(key, set()).add(choice)
-        picked.append(choice)
+            options, history = groups.get(key, []), f"dead:{key}"
+        options = [p for p in options if p not in picked] or options
+        picked.append(ca._pick_fresh(rng, options, history, recent) if options else None)
+    try:
+        ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
+    except OSError:
+        pass
     return picked
 
 
