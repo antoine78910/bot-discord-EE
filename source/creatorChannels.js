@@ -25,7 +25,6 @@ const { sameMessage } = require('./discordSync');
 
 const COLOR = 0x8b5cf6;
 const BRAND = 'ECOM EFFICIENCY CREATORS';
-const SITE = 'https://www.ecomefficiency.com';
 const TOOLS = 'https://app.ecomefficiency.com/tools';
 const ZORCHA = 'https://zorcha.com/';
 const DM_SETUP_VIDEO = 'https://player.mediadelivery.net/play/776484/e2aa021a-927d-4727-abb0-dc95b4935b04';
@@ -106,45 +105,6 @@ function templates(link) {
             ),
         ],
         account_setup: [
-            embed(
-                `💸 ${BRAND} — WHAT IS ECOM EFFICIENCY?`,
-                [
-                    'Ecom Efficiency is an all-in-one subscription for e-commerce and dropshipping: one membership gives access to **50+ AI, spy and SEO tools** that sellers normally pay for one by one.',
-                    '',
-                    '• **Spy & ad-intelligence:** find winning products and competitor ads (PiPiADS, Foreplay, WinningHunter, Kalodata)',
-                    '• **AI tools:** create content, creatives and copy faster',
-                    '• **SEO tools:** research keywords and improve store visibility',
-                    '• **One subscription** instead of paying for every tool',
-                    '',
-                    '**Who are you?** Someone starting an online business, building a Shopify / dropshipping store, chasing a side hustle, or tired of how expensive ecom tools are.',
-                    '',
-                    'Your content should speak to people who test product after product without a sale, scroll for hours for "winning products", pay for 5–10 tool subscriptions, build a store next to a 9–5, or feel like every guru hides their real tools.',
-                    '',
-                    '**Best content = relatable, personal, funny and slightly dramatic.**',
-                    '> "POV: I stopped paying for 10 different ecom tools."',
-                    '> "Ecom got so expensive that I found a way to get all the spy tools for the price of one."',
-                    '',
-                    '**Tone:** make it feel like a discovery — NOT an ad. The viewer should think *"Wait… you can actually do that?"*',
-                ].join('\n')
-            ),
-            embed(
-                `💸 ${BRAND} — PLATFORM SETUP`,
-                [
-                    '**1. Open your invitation link** — we send you a personal invitation link to the sign-up page. Expired? Message us for a new one.',
-                    `*(Website: ${SITE})*`,
-                    '',
-                    '**2. Create your account** from that page. Your invitation gives you free access to Ecom Efficiency.',
-                    '',
-                    '**3. Explore the platform before filming.** Make sure you know how to:',
-                    '• log in and browse the tool catalogue',
-                    '• open a spy tool and find a product or ad',
-                    "• show a competitor's ads or a \"winning product\"",
-                    '• use one of the AI tools and one of the SEO tools',
-                    '• explain that all of this is included in one subscription',
-                    '',
-                    '**IMPORTANT:** get familiar with the platform first so your demos look natural.',
-                ].join('\n')
-            ),
             embed(
                 `💸 ${BRAND} — ACCOUNT SETUP`,
                 [
