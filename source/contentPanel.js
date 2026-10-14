@@ -46,6 +46,7 @@ const CAROUSEL_EMOJI = '🖼️';
 const KINDS = {
     variator: { label: 'app demo video', button: 'App demo video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     youry: { label: 'hook video', button: 'Hook video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
+    workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
@@ -62,6 +63,7 @@ function panelEmbed() {
                 '**Videos**',
                 '🎥 **App demo video**: caption banner + template with the app steps + trending sound',
                 '🎥 **Hook video**: hook + body + music + text hook, random variations',
+                '🎥 **Workflow video**: screen-recorded tool workflow (Kalodata, Dropmagic, Youry…) + music',
                 '',
                 '**Carousels**',
                 '🖼️ **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',

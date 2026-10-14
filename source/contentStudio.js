@@ -184,7 +184,7 @@ function runEngine(args, onProgress) {
         child.stderr.on('data', (chunk) => {
             const text = chunk.toString('utf8');
             if (onProgress) {
-                for (const match of text.matchAll(/^\[(?:variator|youry|carousel) (\d+)\/(\d+)\]/gm)) {
+                for (const match of text.matchAll(/^\[(?:variator|youry|workflow|carousel) (\d+)\/(\d+)\]/gm)) {
                     Promise.resolve(onProgress(Number(match[1]), Number(match[2]))).catch(() => {});
                 }
             }
@@ -223,7 +223,7 @@ function errorLines(result) {
     return errors.map((error) => `⚠️ ${String(error).slice(0, 300)}`).join('\n');
 }
 
-const VIDEO_LABELS = { variator: '🎥 App demo video', youry: '🎥 Hook video' };
+const VIDEO_LABELS = { variator: '🎥 App demo video', youry: '🎥 Hook video', workflow: '🎥 Workflow video' };
 
 function linkRow(links) {
     return new ActionRowBuilder().addComponents(
