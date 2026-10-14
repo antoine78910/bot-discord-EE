@@ -46,7 +46,7 @@ const CAROUSEL_EMOJI = '🖼️';
 const KINDS = {
     variator: { label: 'app demo video', button: 'App demo video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     youry: { label: 'hook video', button: 'Hook video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
-    workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
+    workflow: { label: 'workflow video', button: 'Workflow video (soon)', emoji: VIDEO_EMOJI, style: ButtonStyle.Secondary, disabled: true },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
@@ -63,7 +63,7 @@ function panelEmbed() {
                 '**Videos**',
                 '🎥 **App demo video**: caption banner + template with the app steps + trending sound',
                 '🎥 **Hook video**: hook + body + music + text hook, random variations',
-                '🎥 **Workflow video**: screen-recorded tool workflow (Kalodata, Dropmagic, Youry…) + music',
+                '🎥 **Workflow video** *(coming soon)*: screen-recorded tool workflow (Kalodata, Dropmagic, Youry…) + music',
                 '',
                 '**Carousels**',
                 '🖼️ **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
@@ -101,6 +101,7 @@ function pickerComponents(quantity) {
             .setLabel(quantity > 1 ? `${meta.button} ×${quantity}` : meta.button)
             .setEmoji(meta.emoji)
             .setStyle(meta.style)
+            .setDisabled(Boolean(meta.disabled))
     );
     const rows = [new ActionRowBuilder().addComponents(select)];
     const perRow = buttons.length > 5 ? 3 : 5;
@@ -333,6 +334,10 @@ async function handlePanelInteraction(interaction) {
     if (interaction.isButton() && interaction.customId.startsWith(IDS.makePrefix)) {
         const [kind, rawCount] = interaction.customId.slice(IDS.makePrefix.length).split(':');
         if (!KINDS[kind]) return false;
+        if (KINDS[kind].disabled) {
+            await interaction.reply({ content: `The ${KINDS[kind].label} is not available yet.`, ephemeral: true }).catch(() => {});
+            return true;
+        }
         const count = Math.max(1, Math.min(MAX_ITEMS, Number(rawCount) || 1));
         await startJob(interaction, kind, count);
         return true;
