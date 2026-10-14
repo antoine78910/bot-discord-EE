@@ -330,33 +330,28 @@ async function ensureAdspowerOtpPanel() {
             );
             return;
         }
-        // On each boot: remove our previous panel(s) in recent history, then post a fresh one.
-        const recent = await ch.messages.fetch({ limit: 50 }).catch(() => null);
-        let removed = 0;
-        if (recent) {
-            for (const [, msg] of recent) {
-                if (msg.author?.id === client.user.id && messageHasAdspowerOtpButton(msg)) {
-                    try {
-                        await msg.delete();
-                        removed += 1;
-                    } catch (err) {
-                        console.warn('[BOT] Could not delete old AdsPower OTP panel', msg.id, err?.message || err);
-                    }
-                }
-            }
-        }
-        if (removed) log('BOT', `Removed ${removed} previous AdsPower OTP panel(s) before reposting`);
-
+        const content = 'Click to get your Adspower verification code';
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(ADSPOWER_TOTP_BUTTON_ID)
                 .setLabel('Get the code')
                 .setStyle(ButtonStyle.Primary)
         );
-        const sent = await ch.send({
-            content: 'Click to get your Adspower verification code',
-            components: [row],
-        });
+
+        // Keep the existing panel; only post when none is left in recent history.
+        const recent = await ch.messages.fetch({ limit: 50 }).catch(() => null);
+        const panels = recent
+            ? [...recent.values()].filter((msg) => msg.author?.id === client.user.id && messageHasAdspowerOtpButton(msg))
+            : [];
+        if (panels.length) {
+            const [latest, ...duplicates] = panels;
+            for (const duplicate of duplicates) await duplicate.delete().catch(() => {});
+            if (latest.content !== content) await latest.edit({ content, components: [row] });
+            log('BOT', `AdsPower OTP panel kept (message ${latest.id})`);
+            return;
+        }
+
+        const sent = await ch.send({ content, components: [row] });
         log('BOT', `AdsPower OTP panel posted in channel ${DISCORD_ADSPOWER_OTP_CHANNEL_ID} (message ${sent.id})`);
     } catch (e) {
         console.warn('[BOT] ensureAdspowerOtpPanel failed', e?.message || e);

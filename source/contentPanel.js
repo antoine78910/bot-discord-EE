@@ -12,6 +12,7 @@ const {
     MessageFlags,
     StringSelectMenuBuilder,
 } = require('discord.js');
+const { sameMessage } = require('./discordSync');
 const {
     MAX_ITEMS,
     deliverCarousels,
@@ -40,28 +41,28 @@ const IDS = {
 };
 
 const KINDS = {
-    variator: { label: 'Variator video', button: 'Variator', emoji: '🎞️', style: ButtonStyle.Success },
-    youry: { label: 'YouRy clip', button: 'YouRy clip', emoji: '✂️', style: ButtonStyle.Primary },
-    carousel: { label: 'carousel', button: 'Carousel', emoji: '🖼️', style: ButtonStyle.Secondary },
-    bestbiz: { label: 'best business carousel', button: 'Best business', emoji: '💼', style: ButtonStyle.Secondary },
-    dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: '💀', style: ButtonStyle.Secondary },
-    steps: { label: '5 steps carousel', button: '5 steps', emoji: '5️⃣', style: ButtonStyle.Secondary },
+    variator: { label: 'Variator video', button: 'Variator', emoji: 'ðŸŽžï¸', style: ButtonStyle.Success },
+    youry: { label: 'YouRy clip', button: 'YouRy clip', emoji: 'âœ‚ï¸', style: ButtonStyle.Primary },
+    carousel: { label: 'carousel', button: 'Carousel', emoji: 'ðŸ–¼ï¸', style: ButtonStyle.Secondary },
+    bestbiz: { label: 'best business carousel', button: 'Best business', emoji: 'ðŸ’¼', style: ButtonStyle.Secondary },
+    dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: 'ðŸ’€', style: ButtonStyle.Secondary },
+    steps: { label: '5 steps carousel', button: '5 steps', emoji: '5ï¸âƒ£', style: ButtonStyle.Secondary },
 };
 
 function panelEmbed() {
     return new EmbedBuilder()
-        .setTitle('🎬 Content Generator')
+        .setTitle('ðŸŽ¬ Content Generator')
         .setColor(PANEL_COLOR)
         .setDescription(
             [
                 'Click **Generate Content**, then choose what to create:',
                 '',
-                '🎞️ **Variator**: caption banner + template with the app steps + trending sound',
-                '✂️ **YouRy clip**: hook + body + music + text hook, random variations',
-                '🖼️ **Carousel**: 5 slides (avatar hook, 3 tools, Ecom Efficiency recap) + ZIP',
-                '💼 **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
-                '💀 **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
-                '5️⃣ **5 steps**: hook, 5 steps with logos, then follow and comment',
+                'ðŸŽžï¸ **Variator**: caption banner + template with the app steps + trending sound',
+                'âœ‚ï¸ **YouRy clip**: hook + body + music + text hook, random variations',
+                'ðŸ–¼ï¸ **Carousel**: 5 slides (avatar hook, 3 tools, Ecom Efficiency recap) + ZIP',
+                'ðŸ’¼ **Best business**: 5 slides, stroke text â€” Dropshipping / Trading / Affiliate, then AI Dropshipping',
+                'ðŸ’€ **Is dead**: 10 slides â€” result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
+                '5ï¸âƒ£ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
                 'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
                 'Your files land in your private thread under this channel.',
@@ -72,7 +73,7 @@ function panelEmbed() {
 function panelComponents() {
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(IDS.open).setLabel('Generate Content').setEmoji('🎬').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId(IDS.open).setLabel('Generate Content').setEmoji('ðŸŽ¬').setStyle(ButtonStyle.Success)
         ),
     ];
 }
@@ -91,7 +92,7 @@ function pickerComponents(quantity) {
     const buttons = Object.entries(KINDS).map(([kind, meta]) =>
         new ButtonBuilder()
             .setCustomId(`${IDS.makePrefix}${kind}:${quantity}`)
-            .setLabel(quantity > 1 ? `${meta.button} ×${quantity}` : meta.button)
+            .setLabel(quantity > 1 ? `${meta.button} Ã—${quantity}` : meta.button)
             .setEmoji(meta.emoji)
             .setStyle(meta.style)
     );
@@ -106,7 +107,7 @@ function pickerComponents(quantity) {
 function progressEmbed(kind, current, total) {
     return new EmbedBuilder()
         .setColor(PROGRESS_COLOR)
-        .setDescription(`⏳ **Generating ${KINDS[kind].label} ${current}/${total}...**`);
+        .setDescription(`â³ **Generating ${KINDS[kind].label} ${current}/${total}...**`);
 }
 
 /** Post the panel once; on restart, edit the existing panel instead of re-posting it. */
@@ -135,9 +136,13 @@ async function publishContentPanel(client) {
 
     if (panels.length) {
         const [latest, ...duplicates] = panels;
-        await latest.edit(payload);
         for (const duplicate of duplicates) await duplicate.delete().catch(() => {});
-        console.log(`[CONTENT-PANEL] Panel updated in #${channel.name}`);
+        if (sameMessage(latest, payload)) {
+            console.log(`[CONTENT-PANEL] Panel unchanged in #${channel.name}`);
+        } else {
+            await latest.edit(payload);
+            console.log(`[CONTENT-PANEL] Panel updated in #${channel.name}`);
+        }
     } else {
         await channel.send(payload);
         console.log(`[CONTENT-PANEL] Panel posted in #${channel.name}`);
@@ -183,7 +188,7 @@ async function notifyReviewer(client, user, summary, link) {
     const ping = user.id === REVIEWER_ID ? '' : `<@${REVIEWER_ID}> `;
     await channel
         .send({
-            content: `${ping}🎬 ${user} created **${summary}** → ${link}`,
+            content: `${ping}ðŸŽ¬ ${user} created **${summary}** â†’ ${link}`,
             allowedMentions: { users: ping ? [REVIEWER_ID] : [] },
         })
         .catch((error) => console.warn('[CONTENT-PANEL] Info ping failed:', error?.message || error));
@@ -210,9 +215,9 @@ async function getDeliveryTarget(channel, member) {
             embeds: [
                 new EmbedBuilder()
                     .setColor(PANEL_COLOR)
-                    .setTitle('🎬 Your content workspace')
+                    .setTitle('ðŸŽ¬ Your content workspace')
                     .setDescription(
-                        `Hey ${member} — your Variator videos, YouRy clips and carousels will appear here.\n` +
+                        `Hey ${member} â€” your Variator videos, YouRy clips and carousels will appear here.\n` +
                             'Download carousel ZIPs to keep the iPhone metadata (Discord previews strip it).'
                     ),
             ],
@@ -275,7 +280,7 @@ async function startJob(interaction, kind, count) {
                 .setColor(done ? DONE_COLOR : 0xed4245)
                 .setDescription(
                     [
-                        done ? `✅ **Complete — ${done}/${count} ${label}${plural}**\nPosted in ${target}` : '❌ **Generation failed**',
+                        done ? `âœ… **Complete â€” ${done}/${count} ${label}${plural}**\nPosted in ${target}` : 'âŒ **Generation failed**',
                         errorLines(result),
                     ]
                         .filter(Boolean)
@@ -285,7 +290,7 @@ async function startJob(interaction, kind, count) {
         } catch (error) {
             console.error(`[CONTENT-PANEL] ${kind} job failed:`, error);
             await interaction
-                .editReply({ content: `❌ Generation failed: ${error?.message || 'unknown error'}`, embeds: [] })
+                .editReply({ content: `âŒ Generation failed: ${error?.message || 'unknown error'}`, embeds: [] })
                 .catch(() => {});
         } finally {
             removeDir(jobDir);
@@ -293,7 +298,7 @@ async function startJob(interaction, kind, count) {
     });
 
     if (position > 1) {
-        await interaction.editReply(`🕒 Queued (position ${position}). Another render is running…`).catch(() => {});
+        await interaction.editReply(`ðŸ•’ Queued (position ${position}). Another render is runningâ€¦`).catch(() => {});
     }
     await run;
 }

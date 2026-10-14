@@ -21,6 +21,7 @@ const {
     TextInputBuilder,
     TextInputStyle,
 } = require('discord.js');
+const { sameMessage } = require('./discordSync');
 
 const COLOR = 0x8b5cf6;
 const BRAND = 'ECOM EFFICIENCY CREATORS';
@@ -386,8 +387,8 @@ async function syncMessages(channel, botId, payloads) {
     const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
     const mine = recent ? [...recent.values()].filter((m) => m.author.id === botId).reverse() : [];
     for (const [index, payload] of payloads.entries()) {
-        if (mine[index]) await mine[index].edit(payload);
-        else await channel.send(payload);
+        if (!mine[index]) await channel.send(payload);
+        else if (!sameMessage(mine[index], payload)) await mine[index].edit(payload);
     }
     for (const extra of mine.slice(payloads.length)) await extra.delete().catch(() => {});
 }
