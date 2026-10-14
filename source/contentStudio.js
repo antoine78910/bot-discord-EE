@@ -257,8 +257,43 @@ async function deliverVideos(send, result, prefix = '') {
     }
 }
 
+const MUSIC_DIR = path.join(ENGINE_DIR, 'youry', 'assets', 'clips', 'music');
+
+function randomTrack() {
+    try {
+        const tracks = fs.readdirSync(MUSIC_DIR).filter((name) => /\.(mp3|m4a|wav|aac)$/i.test(name));
+        return tracks.length ? path.join(MUSIC_DIR, tracks[Math.floor(Math.random() * tracks.length)]) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Closing message of a carousel batch: one sound to use, or the platform's own suggestions. */
+async function sendCarouselMusic(send) {
+    const track = randomTrack();
+    const tip = '🎵 **Music:** use this music for your carousel, or pick one TikTok / Instagram suggests you.';
+    if (!track) {
+        await send({ content: '🎵 **Music:** pick one TikTok / Instagram suggests you for your carousel.' });
+        return;
+    }
+    if (isHostingEnabled()) {
+        const hosted = await publishFiles([track], 'Carousel music');
+        await send({ content: tip, components: [linkRow([{ label: 'Download music', url: hosted.files[0].download }])] });
+        return;
+    }
+    await send({ content: tip, files: [new AttachmentBuilder(track, { name: path.basename(track) })] });
+}
+
 async function deliverCarousels(send, result, prefix = '') {
     const items = result.items || [];
+    try {
+        await deliverCarouselItems(send, items, prefix);
+    } finally {
+        if (items.length) await sendCarouselMusic(send).catch(() => {});
+    }
+}
+
+async function deliverCarouselItems(send, items, prefix) {
     for (const [index, item] of items.entries()) {
         const slides = (item.slides || []).map(
             (slide) => new AttachmentBuilder(slide, { name: path.basename(slide) })
