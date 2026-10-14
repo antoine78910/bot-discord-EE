@@ -61,7 +61,7 @@ function getContentSlashCommand() {
         .addSubcommand((sub) =>
             sub
                 .setName('variator')
-                .setDescription('Variator video: caption banner + template with app steps + music.')
+                .setDescription('App demo video: caption banner + template with app steps + music.')
                 .addIntegerOption((option) =>
                     option.setName('count').setDescription(`How many videos (1-${MAX_ITEMS})`).setMinValue(1).setMaxValue(MAX_ITEMS)
                 )
@@ -75,7 +75,7 @@ function getContentSlashCommand() {
         .addSubcommand((sub) =>
             sub
                 .setName('youry')
-                .setDescription('YouRy clip: hook + body + music + text hook, with random variations.')
+                .setDescription('Hook video: hook + body + music + text hook, with random variations.')
                 .addIntegerOption((option) =>
                     option.setName('count').setDescription(`How many clips (1-${MAX_ITEMS})`).setMinValue(1).setMaxValue(MAX_ITEMS)
                 )
@@ -223,7 +223,7 @@ function errorLines(result) {
     return errors.map((error) => `⚠️ ${String(error).slice(0, 300)}`).join('\n');
 }
 
-const VIDEO_LABELS = { variator: '🎞️ Variator video', youry: '✂️ YouRy clip' };
+const VIDEO_LABELS = { variator: '🎥 App demo video', youry: '🎥 Hook video' };
 
 function linkRow(links) {
     return new ActionRowBuilder().addComponents(
@@ -351,7 +351,7 @@ function videoRunner(kind) {
     return async (interaction, jobDir) => {
         const count = interaction.options.getInteger('count') || 1;
         const caption = interaction.options.getString('caption') || '';
-        const label = kind === 'variator' ? 'Variator video' : 'YouRy clip';
+        const label = kind === 'variator' ? 'app demo video' : 'hook video';
         await interaction.editReply(`⏳ Rendering **${count}** ${label}${count > 1 ? 's' : ''}…`);
         const result = await runEngine(videoArgs(kind, count, jobDir, interaction.guild, caption));
         const done = (result.items || []).length;
@@ -432,8 +432,8 @@ async function runStatus(interaction) {
         [
             `**Content engine** ${result.ok ? '✅' : '❌'}`,
             `FFmpeg: ${status.ffmpeg ? '✅' : '❌ missing'}`,
-            `Variator: **${status.variator?.templates ?? 0}** templates · **${status.variator?.music ?? 0}** sounds`,
-            `YouRy: **${status.youry?.hooks ?? 0}** hooks · **${status.youry?.bodies ?? 0}** bodies · **${status.youry?.music ?? 0}** tracks · **${status.youry?.text_hooks ?? 0}** text hooks`,
+            `App demo videos: **${status.variator?.templates ?? 0}** templates · **${status.variator?.music ?? 0}** sounds`,
+            `Hook videos: **${status.youry?.hooks ?? 0}** hooks · **${status.youry?.bodies ?? 0}** bodies · **${status.youry?.music ?? 0}** tracks · **${status.youry?.text_hooks ?? 0}** text hooks`,
             `Avatar packs: ${(status.avatar_packs || []).map((pack) => `\`${pack}\``).join(', ') || 'none'}`,
             `Sample caption: ${status.sample_caption || '—'}`,
             errorLines(result),

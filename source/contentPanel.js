@@ -1,6 +1,6 @@
 /**
  * "Generate Content" panel (YouRy-style) for the EE content bot.
- * Panel button -> ephemeral picker (Variator / YouRy clip / Carousel + quantity)
+ * Panel button -> ephemeral picker (videos / carousels + quantity)
  * -> render queue -> private thread per user.
  */
 const {
@@ -40,13 +40,15 @@ const IDS = {
     makePrefix: 'ee_content_make:',
 };
 
+const VIDEO_EMOJI = '🎥';
+const CAROUSEL_EMOJI = '🖼️';
+
 const KINDS = {
-    variator: { label: 'Variator video', button: 'Variator', emoji: '🎞️', style: ButtonStyle.Success },
-    youry: { label: 'YouRy clip', button: 'YouRy clip', emoji: '✂️', style: ButtonStyle.Primary },
-    carousel: { label: 'carousel', button: 'Carousel', emoji: '🖼️', style: ButtonStyle.Secondary },
-    bestbiz: { label: 'best business carousel', button: 'Best business', emoji: '💼', style: ButtonStyle.Secondary },
-    dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: '💀', style: ButtonStyle.Secondary },
-    steps: { label: '5 steps carousel', button: '5 steps', emoji: '5️⃣', style: ButtonStyle.Secondary },
+    variator: { label: 'app demo video', button: 'App demo video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
+    youry: { label: 'hook video', button: 'Hook video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
+    bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
+    dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
+    steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
 };
 
 function panelEmbed() {
@@ -57,12 +59,14 @@ function panelEmbed() {
             [
                 'Click **Generate Content**, then choose what to create:',
                 '',
-                '🎞️ **Variator**: caption banner + template with the app steps + trending sound',
-                '✂️ **YouRy clip**: hook + body + music + text hook, random variations',
-                '🖼️ **Carousel**: 5 slides (avatar hook, 3 tools, Ecom Efficiency recap) + ZIP',
-                '💼 **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
-                '💀 **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
-                '5️⃣ **5 steps**: hook, 5 steps with logos, then follow and comment',
+                '**Videos**',
+                '🎥 **App demo video**: caption banner + template with the app steps + trending sound',
+                '🎥 **Hook video**: hook + body + music + text hook, random variations',
+                '',
+                '**Carousels**',
+                '🖼️ **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
+                '🖼️ **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
+                '🖼️ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
                 'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
                 'Your files land in your private thread under this channel.',
@@ -217,7 +221,7 @@ async function getDeliveryTarget(channel, member) {
                     .setColor(PANEL_COLOR)
                     .setTitle('🎬 Your content workspace')
                     .setDescription(
-                        `Hey ${member} — your Variator videos, YouRy clips and carousels will appear here.\n` +
+                        `Hey ${member} — your videos and carousels will appear here.\n` +
                             'Download carousel ZIPs to keep the iPhone metadata (Discord previews strip it).'
                     ),
             ],
