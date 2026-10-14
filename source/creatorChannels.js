@@ -26,6 +26,9 @@ const COLOR = 0x8b5cf6;
 const BRAND = 'ECOM EFFICIENCY CREATORS';
 const SITE = 'https://www.ecomefficiency.com';
 const TOOLS = 'https://app.ecomefficiency.com/tools';
+const ZORCHA = 'https://zorcha.com/';
+const DM_SETUP_VIDEO = 'https://player.mediadelivery.net/play/776484/e2aa021a-927d-4727-abb0-dc95b4935b04';
+const DM_LINK = 'https://docs.google.com/document/d/1h4iUz5icf6Vp1w96mH3bAW7eRBifaOQfahFfwyCMOiU/edit?usp=drive_link';
 const REGISTRATION_LOG_CHANNEL_ID =
     process.env.CREATOR_REGISTRATION_LOG_CHANNEL_ID || process.env.CONTENT_INFO_CHANNEL_ID || '1556165339413352518';
 const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
@@ -292,24 +295,33 @@ function templates(link) {
         ],
         dm_automation: [
             embed(
-                `💸 ${BRAND} — DM AUTOMATION`,
+                `💸 ${BRAND} POSTING — DM AUTOMATION`,
                 [
-                    'DM automation is required on every video for payout.',
+                    '**DM automation is mandatory on every post to get paid.**',
+                    '',
+                    '🎥 **Quick video to set up this automation:**',
+                    DM_SETUP_VIDEO,
                     '',
                     '**What is DM automation?**',
-                    'When people comment a keyword on your post, they automatically receive a link in their DMs.',
+                    'When someone comments a keyword under an Instagram post, they automatically receive a link by DM.',
                     '',
-                    '**Instagram:** switch to a professional account (Settings → Account type → Business).',
-                    'Go to Superprofile, sign up for free, only use the free plan.',
+                    'To use it, switch your account to a professional account: Instagram settings → account type → professional / business account.',
                     '',
-                    'For keywords, use **AI** or **Ecom** depending on the video (match the CTA you say in the video).',
+                    `Go to **Zorcha** (free): ${ZORCHA}`,
+                    'Sign up and stay on the free plan.',
                     '',
-                    '**Caption (first line):**',
-                    'Comment "AI" for the full workflow',
-                    'Comment "Ecom" for the full guide',
+                    'On every post, you must send the links via DM automation.',
                     '',
-                    '**The "Open Link" button** sends out this link:',
-                    SITE,
+                    '**Keywords:** **Ecom** or **AI** depending on the post.',
+                    '',
+                    '**Caption:**',
+                    'Comment “AI” to try it!',
+                    'Comment “AI” for the method',
+                    'Comment “AI” for the link',
+                    '_(the keyword must match the links configured below)_',
+                    '',
+                    '**Website link to send (all buttons):**',
+                    DM_LINK,
                 ].join('\n')
             ),
         ],
