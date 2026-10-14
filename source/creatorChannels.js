@@ -3,7 +3,7 @@
  * On startup each channel is found by name (or created next to #payout-submission) and its bot
  * messages are edited in place, so restarts never duplicate them.
  *
- * Copy source: Notion "Ecom Efficiency Account Setup & Warm-Up Guide" + "Ecom Efficiency Formats".
+ * Copy source: Notion "Ecom Efficiency Account Setup & Warm-Up Guide".
  *
  * Env:
  *   CREATOR_CHANNEL_IDS        optional JSON {"start_here":"<id>", ...} to pin channels by id
@@ -53,12 +53,14 @@ const CHANNELS = {
     apply: { name: '🚀-apply', match: 'apply' },
     account_setup: { name: '👤-account-setup', match: 'account-setup' },
     warmup: { name: '🔥-warmup', match: 'warmup' },
-    formats: { name: '🎬-formats', match: 'formats' },
     dm_automation: { name: '📩-dm-automation', match: 'dm-automation' },
     payouts: { name: '💸-payouts', match: 'payouts' },
     content_bot: { name: '🎬-content-bot', match: 'content-bot' },
     payout_submission: { name: '💳-payout-submission', match: 'payout-submission' },
 };
+
+/** Exact names of channels this bot created and no longer uses. */
+const RETIRED_CHANNELS = ['🎬-formats'];
 
 const embed = (title, description) => new EmbedBuilder().setColor(COLOR).setTitle(title).setDescription(description);
 
@@ -82,7 +84,7 @@ function templates(link) {
                     '',
                     `Warm up your accounts for 3 days ${link('warmup')}`,
                     '',
-                    `Pick a format in ${link('formats')} and set up ${link('dm_automation')}`,
+                    `Set up ${link('dm_automation')}`,
                     '',
                     `Start posting using ${link('content_bot')}`,
                 ].join('\n')
@@ -315,72 +317,6 @@ function templates(link) {
                 ].join('\n')
             ),
         ],
-        formats: [
-            embed(
-                '🎬 FORMAT 1 — AI dropshipping, beginner edition',
-                [
-                    '**Length:** 110–130 s · **Style:** talking head + narrated screen recording',
-                    '**Reference:** [TikTok](https://www.tiktok.com/@shon.ecom/video/7646967914221931806)',
-                    '',
-                    '**0–5 s — Hook (on camera):** "AI dropshipping, beginner edition. Here\'s exactly how to get your first sale in 2026, and no, I\'m not selling you a course." · Title on screen: *AI dropshipping - beginner edition*',
-                    '',
-                    `**5–35 s — Find a product:** open [Ecom Efficiency Tools](${TOOLS}) → **Kalodata** → Products, "Last 30 days" + "Top sales" (already default) → show one of the top 6 (don't click it).`,
-                    '',
-                    '**35–75 s — Build a store:** find that product on AliExpress → copy the link → Ecom Efficiency → **DropMagic** → paste the link → show the store already generated on the dashboard (no need to create a new one).',
-                    '',
-                    '**75–110 s — Ads:** **Youry** → Link to Ad → paste the product link → show the UGC ad. If time allows: Workflow → static-ad template → show the ad images.',
-                    '',
-                    '**110–130 s — Recap + CTA (on camera):** "You don\'t want to pay for each tool, so go to Ecom Efficiency to get them all. Comment **"Ecom"** and I\'ll send you the full step-by-step workflow."',
-                ].join('\n')
-            ),
-            embed(
-                '🎬 FORMAT 2 — Best AI ecom tools in 2026',
-                [
-                    '**Length:** 15–20 s · **Style:** fast edit, one question per tool, switch side and show the tool logo each time',
-                    '**Reference:** [TikTok](https://www.tiktok.com/@maverickgpt/video/7610593427536891167) · **Title:** "Best AI tools for ecom in 2026"',
-                    '',
-                    'Do you want to remove subtitles from any video? Use this. *(VMake)*',
-                    'Do you want to find winning products? Use this. *(Kalodata)*',
-                    'Do you want to spy on the best TikTok and Meta ads? Use this. *(PiPiAds)*',
-                    'Do you want to catch trends before everyone else? Use this. *(Exploding Topics)*',
-                    'Do you want your store to rank on Google and AI? Use this. *(Semrush)*',
-                    'Do you want AI UGC ads without hiring creators? Use this. *(Youry)*',
-                    'Do you want to build your store in one minute? Use this. *(DropMagic)*',
-                    'Do you want all of these tools in one place? Use this. *(Ecom Efficiency)*',
-                    'Save and follow for more.',
-                ].join('\n')
-            ),
-            embed(
-                '🎬 FORMAT 3 — AI dropshipping is going crazy right now',
-                [
-                    '**Length:** 45–75 s · **Style:** talking-head intro, screen demo, back to camera',
-                    '**Reference:** [TikTok](https://www.tiktok.com/@jaden.drops/video/7562697983792352542)',
-                    '',
-                    '1. **On camera:** "AI dropshipping is going crazy right now, so I\'m going to show you how to start as a beginner."',
-                    '2. "First you need a winning product, so go to this website with 50+ ecom tools. I\'m choosing **Kalodata** — it tracks what\'s selling on TikTok Shop." · Turn the camera to the Ecom Efficiency tools.',
-                    '3. "Go to Products, filter last 30 days and top sales. I\'m choosing this product." · Pick one of the top 6.',
-                    '4. "Then go to AliExpress and find that exact product." · Show the AliExpress page.',
-                    '5. "Copy the link, come to this tool and paste it — it creates a beautiful product page with AI." · **DropMagic** → new store → paste → generate. *Don\'t wait: open the store already created on the dashboard.*',
-                    '6. "Last thing: your ads. Open **Youry**, Workflow, this template, swap in your product photo and site link, and it creates winning ads." · Workflow → Static Ad template → show inputs + result.',
-                    '7. **Back on camera:** "Then launch your ads and watch the sales come in. Comment **"AI"** and I\'ll send you the workflow and the tools I used."',
-                ].join('\n')
-            ),
-            embed(
-                "🎬 FORMAT 4 — I'm deleting this video in 24 hours",
-                [
-                    '**Length:** 30–50 s · **Style:** talking-head hook, narrated discovery, quick demo, back to camera',
-                    '',
-                    '> I\'m deleting this video in 24 hours because I just found a crazy hack, and honestly, I don\'t want it to get too much attention.',
-                    '> So basically, someone just created this website where you get access to 50+ ecom tools — basically everything you need to run an ecom store.',
-                    "> You've got Higgsfield for AI video, ElevenLabs for AI voiceovers, Kalodata to find winning products, Vmake to remove subtitles, Dropmagic to build your store in minutes, and a ton more.",
-                    "> And the crazy part is, you just click on the tool and you're in. Nothing else.",
-                    "> And you don't have to pay for each of these expensive subscriptions separately.",
-                    '> So comment **"AI"** and I\'ll send you **for free the full workflow** to start AI dropshipping in 2026.',
-                    '',
-                    '**Editing:** at "So basically…" turn the camera to the website and show each tool as you name it · at "you just click" click on Dropmagic · at "So comment…" back to camera.',
-                ].join('\n')
-            ),
-        ],
         dm_automation: [
             embed(
                 `💸 ${BRAND} POSTING — DM AUTOMATION`,
@@ -480,8 +416,20 @@ async function syncMessages(channel, botId, payloads) {
     for (const extra of mine.slice(payloads.length)) await extra.delete().catch(() => {});
 }
 
+async function removeRetiredChannels(guild) {
+    const all = await guild.channels.fetch().catch(() => guild.channels.cache);
+    for (const channel of all.values()) {
+        if (channel?.type !== ChannelType.GuildText || !RETIRED_CHANNELS.includes(channel.name)) continue;
+        await channel
+            .delete('Creator channel retired')
+            .then(() => console.log(`[CREATOR] Deleted #${channel.name}`))
+            .catch((error) => console.warn(`[CREATOR] Could not delete #${channel.name}:`, error?.message || error));
+    }
+}
+
 async function publishCreatorChannels(client) {
     for (const guild of client.guilds.cache.values()) {
+        await removeRetiredChannels(guild);
         const channels = await resolveChannels(guild);
         const link = (key) => (channels[key] ? `<#${channels[key].id}>` : `#${CHANNELS[key].name}`);
         for (const [key, embeds] of Object.entries(templates(link))) {
