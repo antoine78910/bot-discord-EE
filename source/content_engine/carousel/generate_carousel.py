@@ -38,8 +38,11 @@ TEMPLATES_DIR = PROJECT_ROOT / "templates"
 TEMPLATE3_FILE = TEMPLATES_DIR / "template3.json"
 TEMPLATE4_FILE = TEMPLATES_DIR / "template4.json"
 DARK_CITIES_PACK = "dark_cities"
-# Night skylines are only for template 3 — keep them out of the lifestyle mix.
-PHOTO_PACKS_EXCLUDED_FROM_MIX = frozenset({DARK_CITIES_PACK})
+# Dedicated backgrounds stay out of the tools-carousel mix:
+# night skylines (template 3), business class + lifestyle (Best business carousel).
+PHOTO_PACKS_EXCLUDED_FROM_MIX = frozenset(
+    {DARK_CITIES_PACK, "business_class", "lifestyle", "dead", "steps", "comment AI"}
+)
 
 # Avatar pack 1 = femme noir (drop photos in assets/avatars/femme_noir/)
 DEFAULT_AVATAR_PACK = "femme_noir"
@@ -424,7 +427,7 @@ def _collect_photos(pack: str | None = None, *, avatar_pack: str | None = None) 
 
 
 def _load_and_cover(path: Path, w: int, h: int) -> Image.Image:
-    img = Image.open(path).convert("RGB")
+    img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     iw, ih = img.size
     scale = max(w / iw, h / ih)
     nw, nh = int(iw * scale), int(ih * scale)

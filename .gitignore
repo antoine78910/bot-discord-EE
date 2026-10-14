@@ -40,6 +40,12 @@ __pycache__/
 *.pyc
 source/content_engine/out/
 source/content_engine/youry/assets/clips/output/
+source/content_engine/carousel/output/
+# Workflow video clips are local-only for now (too heavy for git).
+source/content_engine/workflow/**/*.mp4
+source/content_engine/workflow/**/*.MOV
+source/content_engine/workflow/**/*.mov
+source/content_engine/workflow/_rename_log.txt
 
 # Coverage / temp
 coverage/

@@ -64,10 +64,12 @@ class CarouselResult:
     avatar_pack: str
     avatar: str
     color: str
+    style: str = "tools"
 
     def to_json(self) -> dict:
         return {
             "type": "carousel",
+            "style": self.style,
             "slides": [str(p) for p in self.slides],
             "zip": str(self.zip_path),
             "hook": self.hook_preview,

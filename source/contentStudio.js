@@ -78,14 +78,25 @@ function getContentSlashCommand() {
         )
         .addSubcommand((sub) => {
             sub.setName('carousel')
-                .setDescription('5-slide EE carousel (avatar hook + tools + Ecom Efficiency), iPhone EXIF.')
+                .setDescription('5-slide EE carousel, iPhone EXIF. Pick tools or best-business.')
                 .addIntegerOption((option) =>
-                    option.setName('count').setDescription('How many carousels (1-3)').setMinValue(1).setMaxValue(MAX_ITEMS)
+                    option.setName('count').setDescription('How many carousels (1-5)').setMinValue(1).setMaxValue(MAX_ITEMS)
+                )
+                .addStringOption((option) =>
+                    option
+                        .setName('style')
+                        .setDescription('Layout (default: tools)')
+                        .addChoices(
+                            { name: 'Tools — avatar hook + app steps', value: 'tools' },
+                            { name: 'Best business — stroke text', value: 'best-business' },
+                            { name: 'Dropshipping is dead — stroke text', value: 'dead' },
+                            { name: '5 steps — labels and logos', value: 'steps' }
+                        )
                 )
                 .addStringOption((option) =>
                     option
                         .setName('color')
-                        .setDescription('Text box color (default: purple)')
+                        .setDescription('Text box color for the tools layout (default: purple)')
                         .addChoices(...COLORS.map((color) => ({ name: color, value: color })))
                 );
             if (packs.length) {
@@ -231,9 +242,15 @@ async function deliverCarousels(send, result, prefix = '') {
         const slides = (item.slides || []).map(
             (slide) => new AttachmentBuilder(slide, { name: path.basename(slide) })
         );
+        const DETAILS = {
+            'best-business': 'Best business · stroke text · business class + lifestyle',
+            dead: 'Dropshipping is dead · 10 slides',
+            steps: '5 steps · white labels and logos',
+        };
+        const detail = DETAILS[item.style] || `avatar \`${item.avatar_pack}\` · color \`${item.color}\``;
         await send({
             content: [
-                `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — avatar \`${item.avatar_pack}\` · color \`${item.color}\` · 📱 iPhone EXIF`,
+                `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — ${detail} · 📱 iPhone EXIF`,
                 `**Hook:** ${item.hook}`,
             ].join('\n'),
             files: slides,
@@ -275,7 +292,8 @@ function videoRunner(kind) {
 
 async function runCarousel(interaction, jobDir) {
     const count = interaction.options.getInteger('count') || 1;
-    const args = ['carousel', '--count', String(count), '--out', jobDir];
+    const style = interaction.options.getString('style') || 'tools';
+    const args = ['carousel', '--count', String(count), '--out', jobDir, '--style', style];
     const avatar = interaction.options.getString('avatar');
     const color = interaction.options.getString('color');
     if (avatar) args.push('--avatar', avatar);

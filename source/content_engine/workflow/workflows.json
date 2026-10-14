@@ -1,0 +1,81 @@
+{
+  "_help": "See ee_engine/workflow_video.py. from: broad | product | any (product clip if it exists, else broad). optional: skip when no clip. keep_audio: keep the clip's own sound over the music (all other clips are muted). one_of: pick one branch (weight). chance: play the steps with that probability. clip = file name without the variant number.",
+  "dropshipping": [
+    {
+      "one_of": [
+        {
+          "label": "TikTok research",
+          "steps": [
+            { "clip": "tiktok", "from": "broad" },
+            { "clip": "mademebuyit", "from": "broad" },
+            { "clip": "tiktok show", "from": "any" }
+          ]
+        },
+        {
+          "label": "Kalodata research",
+          "steps": [
+            {
+              "chance": 0.75,
+              "label": "Ecom Efficiency intro",
+              "steps": [{ "clip": "ecomefficiency", "from": "broad" }]
+            },
+            { "clip": "show kalodata", "from": "broad" },
+            { "clip": "product kalodata", "from": "broad" },
+            { "clip": "kalodata show product", "from": "any" }
+          ]
+        }
+      ]
+    },
+
+    { "clip": "aliexpress", "from": "product" },
+    { "clip": "aliexpress link", "from": "product", "optional": true },
+
+    { "clip": "show dropmagic", "from": "broad" },
+    { "clip": "new store", "from": "broad" },
+    { "clip": "loading dropmagic", "from": "any" },
+    { "clip": "shop", "from": "product", "optional": true },
+
+    { "clip": "show youry", "from": "broad" },
+
+    {
+      "one_of": [
+        {
+          "label": "Link to Ad",
+          "steps": [
+            { "clip": "show lta", "from": "broad" },
+            { "clip": "paste lta", "from": "broad" },
+            { "clip": "generate", "from": "broad" },
+            { "clip": "loading ugc", "from": "product", "optional": true },
+            { "clip": "show ugc", "from": "product", "optional": true },
+            { "clip": "ugc", "from": "product" },
+            { "clip": "ig", "from": "product", "optional": true },
+            { "clip": "result", "from": "broad" }
+          ]
+        },
+        {
+          "label": "Workflow",
+          "steps": [
+            { "clip": "workflow", "from": "broad" },
+            { "clip": "static ads", "from": "broad", "optional": true },
+            { "clip": "input workflow", "from": "product" },
+            { "clip": "show workflow", "from": "product", "optional": true },
+            { "clip": "ads", "from": "product" },
+            { "clip": "meta", "from": "broad" },
+            {
+              "one_of": [
+                { "label": "Result", "steps": [{ "clip": "result", "from": "broad" }] },
+                {
+                  "label": "Katching + result",
+                  "steps": [
+                    { "clip": "katching", "from": "broad", "keep_audio": true },
+                    { "clip": "result", "from": "broad" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

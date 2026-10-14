@@ -4,6 +4,7 @@ EE content engine CLI — called by the Discord bot (contentStudio.js).
     python cli.py status
     python cli.py variator --count 2 --out /tmp/job
     python cli.py youry --count 2 --out /tmp/job
+    python cli.py workflow --count 2 [--workflow dropshipping] [--product printer] --out /tmp/job
     python cli.py carousel --count 1 --avatar femme_noir --out /tmp/job
     python cli.py cleanvideo --input in.mp4 --out /tmp/job
 
@@ -40,6 +41,7 @@ def _seed() -> int:
 def cmd_status(_args) -> dict:
     from ee_engine.ee_carousel import avatar_packs, color_names
     from ee_engine.videos import pick_captions, variator_status, youry_status
+    from ee_engine.workflow_video import workflow_status
 
     return {
         "ok": True,
@@ -49,6 +51,7 @@ def cmd_status(_args) -> dict:
             "ffmpeg": resolve_ffmpeg_bin() or "",
             "variator": variator_status(),
             "youry": youry_status(),
+            "workflow": workflow_status(),
             "avatar_packs": avatar_packs(),
             "colors": color_names(),
             "sample_caption": pick_captions(1)[0],
@@ -104,20 +107,57 @@ def cmd_youry(args) -> dict:
     )
 
 
+def cmd_workflow(args) -> dict:
+    from ee_engine.workflow_video import render_workflow_video
+
+    count = max(1, min(MAX_COUNT, args.count))
+    return _render_many(
+        "workflow",
+        count,
+        lambda _index: render_workflow_video(
+            args.out,
+            seed=_seed(),
+            max_bytes=int(args.max_mb * 1024 * 1024),
+            workflow=args.workflow or None,
+            product=args.product or None,
+            iphone_signature=not args.no_iphone,
+        ),
+    )
+
+
 def cmd_carousel(args) -> dict:
+    from ee_engine.ee_best_business import build_best_business_carousel
     from ee_engine.ee_carousel import build_ee_carousel
+    from ee_engine.ee_dead import build_dead_carousel
+    from ee_engine.ee_steps import build_steps_carousel
 
     count = max(1, min(MAX_COUNT, args.count))
     items, errors = [], []
     for index in range(1, count + 1):
         _log(f"[carousel {index}/{count}]")
         try:
-            result = build_ee_carousel(
-                args.out / f"carousel_{index}",
-                seed=_seed(),
-                avatar_pack=args.avatar,
-                color=args.color,
-            )
+            if args.style == "best-business":
+                result = build_best_business_carousel(
+                    args.out / f"carousel_{index}",
+                    seed=_seed(),
+                )
+            elif args.style == "dead":
+                result = build_dead_carousel(
+                    args.out / f"carousel_{index}",
+                    seed=_seed(),
+                )
+            elif args.style == "steps":
+                result = build_steps_carousel(
+                    args.out / f"carousel_{index}",
+                    seed=_seed(),
+                )
+            else:
+                result = build_ee_carousel(
+                    args.out / f"carousel_{index}",
+                    seed=_seed(),
+                    avatar_pack=args.avatar,
+                    color=args.color,
+                )
             items.append(result.to_json())
         except Exception as exc:
             errors.append(f"Carousel {index} failed: {exc}")
@@ -188,10 +228,19 @@ def main() -> int:
     youry.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB)
     youry.add_argument("--no-iphone", action="store_true")
 
+    workflow = sub.add_parser("workflow")
+    workflow.add_argument("--count", type=int, default=1)
+    workflow.add_argument("--workflow", default="")
+    workflow.add_argument("--product", default="")
+    workflow.add_argument("--out", type=Path, required=True)
+    workflow.add_argument("--max-mb", type=float, default=DEFAULT_MAX_MB)
+    workflow.add_argument("--no-iphone", action="store_true")
+
     carousel = sub.add_parser("carousel")
     carousel.add_argument("--count", type=int, default=1)
     carousel.add_argument("--avatar", default=None)
     carousel.add_argument("--color", default=None)
+    carousel.add_argument("--style", default="tools", choices=("tools", "best-business", "dead", "steps"))
     carousel.add_argument("--out", type=Path, required=True)
 
     clean = sub.add_parser("cleanvideo")
@@ -209,6 +258,7 @@ def main() -> int:
         "status": cmd_status,
         "variator": cmd_variator,
         "youry": cmd_youry,
+        "workflow": cmd_workflow,
         "carousel": cmd_carousel,
         "cleanvideo": cmd_cleanvideo,
     }

@@ -26,6 +26,9 @@ const {
 } = require('./contentStudio');
 
 const PANEL_CHANNEL_ID = process.env.CONTENT_PANEL_CHANNEL_ID || '1556165419184816219';
+// Every content thread includes the reviewer, who is pinged in the info channel after each delivery.
+const INFO_CHANNEL_ID = process.env.CONTENT_INFO_CHANNEL_ID || '1556165339413352518';
+const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
 const PANEL_COLOR = 0x8b5cf6;
 const PROGRESS_COLOR = 0x5865f2;
 const DONE_COLOR = 0x57f287;
@@ -40,6 +43,9 @@ const KINDS = {
     variator: { label: 'Variator video', button: 'Variator', emoji: '🎞️', style: ButtonStyle.Success },
     youry: { label: 'YouRy clip', button: 'YouRy clip', emoji: '✂️', style: ButtonStyle.Primary },
     carousel: { label: 'carousel', button: 'Carousel', emoji: '🖼️', style: ButtonStyle.Secondary },
+    bestbiz: { label: 'best business carousel', button: 'Best business', emoji: '💼', style: ButtonStyle.Secondary },
+    dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: '💀', style: ButtonStyle.Secondary },
+    steps: { label: '5 steps carousel', button: '5 steps', emoji: '5️⃣', style: ButtonStyle.Secondary },
 };
 
 function panelEmbed() {
@@ -53,6 +59,9 @@ function panelEmbed() {
                 '🎞️ **Variator**: caption banner + template with the app steps + trending sound',
                 '✂️ **YouRy clip**: hook + body + music + text hook, random variations',
                 '🖼️ **Carousel**: 5 slides (avatar hook, 3 tools, Ecom Efficiency recap) + ZIP',
+                '💼 **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
+                '💀 **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
+                '5️⃣ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
                 'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
                 'Your files land in your private thread under this channel.',
@@ -86,7 +95,12 @@ function pickerComponents(quantity) {
             .setEmoji(meta.emoji)
             .setStyle(meta.style)
     );
-    return [new ActionRowBuilder().addComponents(select), new ActionRowBuilder().addComponents(...buttons)];
+    const rows = [new ActionRowBuilder().addComponents(select)];
+    const perRow = buttons.length > 5 ? 3 : 5;
+    for (let index = 0; index < buttons.length; index += perRow) {
+        rows.push(new ActionRowBuilder().addComponents(...buttons.slice(index, index + perRow)));
+    }
+    return rows;
 }
 
 function progressEmbed(kind, current, total) {
@@ -152,11 +166,37 @@ async function findUserThread(channel, user) {
     return null;
 }
 
+async function addReviewer(thread) {
+    if (!REVIEWER_ID || !thread?.members) return;
+    await thread.members.add(REVIEWER_ID).catch((error) =>
+        console.warn('[CONTENT-PANEL] Could not add reviewer to thread:', error?.message || error)
+    );
+}
+
+async function notifyReviewer(client, user, summary, link) {
+    if (!REVIEWER_ID) return;
+    const channel = await client.channels.fetch(INFO_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased?.()) {
+        console.warn(`[CONTENT-PANEL] Info channel ${INFO_CHANNEL_ID} not reachable.`);
+        return;
+    }
+    const ping = user.id === REVIEWER_ID ? '' : `<@${REVIEWER_ID}> `;
+    await channel
+        .send({
+            content: `${ping}🎬 ${user} created **${summary}** → ${link}`,
+            allowedMentions: { users: ping ? [REVIEWER_ID] : [] },
+        })
+        .catch((error) => console.warn('[CONTENT-PANEL] Info ping failed:', error?.message || error));
+}
+
 /** Private thread per user; falls back to the channel itself if the bot cannot create threads. */
 async function getDeliveryTarget(channel, member) {
     try {
         const existing = await findUserThread(channel, member.user);
-        if (existing) return existing;
+        if (existing) {
+            await addReviewer(existing);
+            return existing;
+        }
         const thread = await channel.threads.create({
             name: threadNameFor(member.user),
             type: ChannelType.PrivateThread,
@@ -165,6 +205,7 @@ async function getDeliveryTarget(channel, member) {
             reason: `Content workspace for ${member.user.tag}`,
         });
         await thread.members.add(member.id);
+        await addReviewer(thread);
         await thread.send({
             embeds: [
                 new EmbedBuilder()
@@ -202,20 +243,34 @@ async function startJob(interaction, kind, count) {
         const jobDir = makeJobDir();
         try {
             await interaction.editReply({ content: '', embeds: [progressEmbed(kind, 1, count)] }).catch(() => {});
-            const args =
-                kind === 'carousel'
-                    ? ['carousel', '--count', String(count), '--out', jobDir]
-                    : videoArgs(kind, count, jobDir, interaction.guild);
+            const carouselStyles = { carousel: 'tools', bestbiz: 'best-business', dead: 'dead', steps: 'steps' };
+            const carouselStyle = carouselStyles[kind];
+            const args = carouselStyle
+                ? ['carousel', '--count', String(count), '--out', jobDir, '--style', carouselStyle]
+                : videoArgs(kind, count, jobDir, interaction.guild);
             const result = await runEngine(args, (current, total) =>
                 interaction.editReply({ embeds: [progressEmbed(kind, current, total)] })
             );
 
             const done = (result.items || []).length;
-            const send = (payload) => target.send(payload);
-            if (kind === 'carousel') await deliverCarousels(send, result, `${interaction.user} `);
+            let firstMessage = null;
+            const send = async (payload) => {
+                const message = await target.send(payload);
+                firstMessage ||= message;
+                return message;
+            };
+            if (carouselStyle) await deliverCarousels(send, result, `${interaction.user} `);
             else await deliverVideos(send, result, `${interaction.user} `);
 
             const plural = count > 1 ? 's' : '';
+            if (done) {
+                await notifyReviewer(
+                    interaction.client,
+                    interaction.user,
+                    `${done} ${label}${done > 1 ? 's' : ''}`,
+                    firstMessage?.url || target.url || `${target}`
+                );
+            }
             const embed = new EmbedBuilder()
                 .setColor(done ? DONE_COLOR : 0xed4245)
                 .setDescription(
