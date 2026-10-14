@@ -36,7 +36,7 @@ BADGE_SIZE = 340
 LOGO_DIR = Path(__file__).resolve().parents[1] / "carousel" / "assets" / "logos" / "steps"
 
 # Wide wordmarks: keep only the symbol on the left, the name is already in the text.
-ICON_ONLY: set[str] = set()
+ICON_ONLY: set[str] = {"winninghunter.png"}
 
 # Logos that read too small at the default size.
 LOGO_SCALE = {"dropmagic.png": 1.05, "tiktok.png": 1.35, "youry.png": 1.3, "higgsfield.png": 1.2}
@@ -88,6 +88,7 @@ STEPS = (
         "bg": "store",
         "options": (
             {"site": "Dropmagic.ai", "desc": "Fully build Shopify store in seconds", "logo": "dropmagic.png"},
+            {"site": "WinningHunter.com", "desc": "Build your Shopify store with AI", "logo": "winninghunter.png"},
         ),
     },
     {
@@ -106,7 +107,6 @@ STEPS = (
         "options": (
             {"site": "TikTok.com", "desc": POST, "logo": "tiktok.png"},
             {"site": "Instagram.com", "desc": POST, "logo": "instagram.png"},
-            {"site": "Meta Ads", "desc": "Run the ads and scale your business", "logo": "meta.png"},
         ),
     },
     {
@@ -116,7 +116,6 @@ STEPS = (
         "options": (
             {"site": "PayPal.com", "desc": PAID, "logo": "paypal.png"},
             {"site": "Shopify Payments", "desc": PAID, "logo": "shopify.png"},
-            {"site": "Stripe.com", "desc": PAID, "logo": "stripe.png"},
         ),
     },
 )
@@ -241,12 +240,15 @@ def _with_shadow(badge: Image.Image) -> Image.Image:
 def _pick_slides(rng: random.Random) -> list[dict]:
     """Hook, one random tool per step (no logo twice), outro."""
     slides: list[dict] = [{"kind": "pill", "text": rng.choice(HOOKS), "tint": HOOK_TINT, "bg": COMMENT_BG}]
+    # Resolve steps in random order so a shared tool (TikTok) is not always taken by the first step.
     used: set[str] = set()
-    for step in STEPS:
-        options = [opt for opt in step["options"] if opt["logo"] not in used] or list(step["options"])
-        choice = rng.choice(options)
-        used.add(choice["logo"])
-        slides.append({"kind": "step", "title": step["title"], "tint": step["tint"], "bg": step["bg"], **choice})
+    choices: dict[int, dict] = {}
+    for index in rng.sample(range(len(STEPS)), len(STEPS)):
+        options = [opt for opt in STEPS[index]["options"] if opt["logo"] not in used] or list(STEPS[index]["options"])
+        choices[index] = rng.choice(options)
+        used.add(choices[index]["logo"])
+    for index, step in enumerate(STEPS):
+        slides.append({"kind": "step", "title": step["title"], "tint": step["tint"], "bg": step["bg"], **choices[index]})
     outro = rng.choice(OUTROS).format(keyword=rng.choice(OUTRO_KEYWORDS))
     slides.append({"kind": "pill", "text": outro, "tint": OUTRO_TINT, "bg": COMMENT_BG})
     return slides
