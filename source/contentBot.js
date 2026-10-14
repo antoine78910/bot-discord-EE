@@ -23,6 +23,7 @@ try {
 
 const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = require('./contentStudio');
 const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
+const { startFileServer } = require('./contentFiles');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
 
@@ -30,6 +31,8 @@ if (!TOKEN) {
     console.error('[CONTENT-BOT] CONTENT_BOT_TOKEN is missing.');
     process.exit(1);
 }
+
+startFileServer();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 

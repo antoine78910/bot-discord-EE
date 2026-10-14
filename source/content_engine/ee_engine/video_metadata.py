@@ -313,8 +313,8 @@ def _random_variation(rng: random.Random) -> VariationParams:
         speed=rng.uniform(0.985, 1.015),
         start_trim=rng.uniform(0.05, 0.2),
         end_trim=rng.uniform(0.1, 0.35),
-        crf=rng.choice([19, 20, 21, 22, 23]),
-        preset=rng.choice(["medium", "fast", "faster", "veryfast"]),
+        crf=rng.choice([16, 17, 18]),
+        preset=rng.choice(["medium", "fast"]),
         audio_volume=rng.uniform(0.97, 1.03),
     )
 
@@ -459,7 +459,7 @@ def clean_and_vary_video(
         "-pix_fmt", "yuv420p",
     ]
     if has_audio:
-        args += ["-c:a", "aac", "-b:a", "128k"]
+        args += ["-c:a", "aac", "-b:a", "192k"]
 
     # Strip every container/stream metadata field + chapters + disposition.
     args += [

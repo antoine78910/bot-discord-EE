@@ -61,8 +61,9 @@ OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 OUTPUT_FPS = 30
 MUSIC_VOLUME = 0.42
-ENCODE_PRESET = "veryfast"
-ENCODE_CRF = "22"
+ENCODE_PRESET = "fast"
+ENCODE_CRF = "17"
+ENCODE_MAXRATE = "14M"
 @dataclass
 class ClipRecipe:
     hook: Path
@@ -493,9 +494,11 @@ def assemble_clip(
     output_path: Path | None = None,
     *,
     seed: int | None = None,
+    fit_discord: bool = True,
 ) -> tuple[Path, ClipRecipe]:
     """
     Build one vertical clip. Returns (output_path, recipe used).
+    fit_discord=False keeps the full-quality render (the caller handles size).
   """
     if not ffmpeg_available():
         raise ClipAssemblyError(
@@ -514,7 +517,8 @@ def assemble_clip(
 
     try:
         _render_clip(recipe, output_path)
-        output_path = _ensure_upload_size(output_path)
+        if fit_discord:
+            output_path = _ensure_upload_size(output_path)
     except ClipAssemblyError:
         output_path.unlink(missing_ok=True)
         raise
@@ -616,15 +620,17 @@ def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
             "-crf",
             ENCODE_CRF,
             "-maxrate",
-            "2.5M",
+            ENCODE_MAXRATE,
             "-bufsize",
-            "5M",
+            "28M",
+            "-pix_fmt",
+            "yuv420p",
             "-threads",
             "0",
             "-c:a",
             "aac",
             "-b:a",
-            "128k",
+            "192k",
             "-movflags",
             "+faststart",
             str(dest),

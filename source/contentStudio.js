@@ -10,12 +10,16 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
+    ActionRowBuilder,
     AttachmentBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     MessageFlags,
     PermissionFlagsBits,
     PermissionsBitField,
     SlashCommandBuilder,
 } = require('discord.js');
+const { isHostingEnabled, publishFiles } = require('./contentFiles');
 
 const CONTENT_COMMAND = 'ee-content';
 const ENGINE_DIR = path.resolve(__dirname, 'content_engine');
@@ -136,8 +140,9 @@ function isStaff(interaction) {
     return roles.some((roleId) => STAFF_ROLE_IDS.includes(roleId));
 }
 
-/** Upload ceiling for this guild, minus a safety margin (MB). */
+/** Size ceiling for renders (MB). With download links there is no Discord cap, so nothing is recompressed. */
 function uploadLimitMb(guild) {
+    if (isHostingEnabled()) return 4000;
     const tier = guild?.premiumTier || 0;
     if (tier >= 3) return 95;
     if (tier >= 2) return 48;
@@ -220,18 +225,34 @@ function errorLines(result) {
 
 const VIDEO_LABELS = { variator: '🎞️ Variator video', youry: '✂️ YouRy clip' };
 
+function linkRow(links) {
+    return new ActionRowBuilder().addComponents(
+        ...links.map(({ label, url }) => new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(label).setURL(url))
+    );
+}
+
 /** `send` posts one message (interaction.followUp, thread.send, ...). */
 async function deliverVideos(send, result, prefix = '') {
     const items = result.items || [];
     for (const [index, item] of items.entries()) {
-        const file = new AttachmentBuilder(item.path, { name: path.basename(item.path) });
         const label = VIDEO_LABELS[item.type] || '🎬 Video';
+        const header = `${prefix}${label} **${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`;
+        if (isHostingEnabled()) {
+            const hosted = await publishFiles([item.path], `${label} ${index + 1}/${items.length}`);
+            await send({
+                content: [header, ...(item.details || []), '⬇️ Download from the link below (full quality, do not re-download from Discord).'].join('\n'),
+                components: [
+                    linkRow([
+                        { label: 'Download video', url: hosted.files[0].download },
+                        { label: 'Watch', url: hosted.page },
+                    ]),
+                ],
+            });
+            continue;
+        }
         await send({
-            content: [
-                `${prefix}${label} **${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`,
-                ...(item.details || []),
-            ].join('\n'),
-            files: [file],
+            content: [header, ...(item.details || [])].join('\n'),
+            files: [new AttachmentBuilder(item.path, { name: path.basename(item.path) })],
         });
     }
 }
@@ -248,11 +269,27 @@ async function deliverCarousels(send, result, prefix = '') {
             steps: '5 steps · white labels and logos',
         };
         const detail = DETAILS[item.style] || `avatar \`${item.avatar_pack}\` · color \`${item.color}\``;
+        const header = [
+            `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — ${detail} · 📱 iPhone EXIF`,
+            `**Hook:** ${item.hook}`,
+        ];
+        if (isHostingEnabled()) {
+            const hosted = await publishFiles([...(item.slides || []), item.zip], `Carousel ${index + 1}/${items.length} — ${item.hook}`);
+            const zip = hosted.files[hosted.files.length - 1];
+            await send({
+                content: [...header, '👀 Previews below are recompressed by Discord. ⬇️ Download the originals from the links.'].join('\n'),
+                files: slides,
+                components: [
+                    linkRow([
+                        { label: 'Download ZIP (all slides)', url: zip.download },
+                        { label: 'Open slides', url: hosted.page },
+                    ]),
+                ],
+            });
+            continue;
+        }
         await send({
-            content: [
-                `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — ${detail} · 📱 iPhone EXIF`,
-                `**Hook:** ${item.hook}`,
-            ].join('\n'),
+            content: header.join('\n'),
             files: slides,
         });
         await send({
@@ -332,14 +369,23 @@ async function runCleanVideo(interaction, jobDir) {
     }
     const removed = (item.tags_removed || []).slice(0, 15).map((tag) => `\`${tag}\``).join(', ') || 'none';
     await interaction.editReply('✅ Video cleaned.');
+    const content = [
+        `🧼 **Clean video** — ${item.duration_before}s → ${item.duration_after}s · 📱 iPhone 15 Pro signature`,
+        `**Removed tags:** ${removed}`,
+        item.variation ? `**Variation:** ${item.variation}` : '',
+    ]
+        .filter(Boolean)
+        .join('\n');
+    if (isHostingEnabled()) {
+        const hosted = await publishFiles([item.path], 'Clean video');
+        await interaction.followUp({
+            content,
+            components: [linkRow([{ label: 'Download video', url: hosted.files[0].download }, { label: 'Watch', url: hosted.page }])],
+        });
+        return;
+    }
     await interaction.followUp({
-        content: [
-            `🧼 **Clean video** — ${item.duration_before}s → ${item.duration_after}s · 📱 iPhone 15 Pro signature`,
-            `**Removed tags:** ${removed}`,
-            item.variation ? `**Variation:** ${item.variation}` : '',
-        ]
-            .filter(Boolean)
-            .join('\n'),
+        content,
         files: [new AttachmentBuilder(item.path, { name: path.basename(item.path) })],
     });
 }

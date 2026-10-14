@@ -285,7 +285,7 @@ def _uniquify(img: Image.Image, rng: random.Random) -> Image.Image:
         out = Image.merge("HSV", (hh, ss, vv)).convert("RGB")
 
     # Resample through a slightly smaller size, then drop random pixels.
-    shrink = rng.uniform(0.9, 0.97)
+    shrink = rng.uniform(0.97, 0.99)
     out = out.resize((int(w * shrink), int(h * shrink)), Image.Resampling.BILINEAR).resize((w, h), Image.Resampling.LANCZOS)
     pixels = out.load()
     for _ in range(int(w * h * rng.uniform(0.0015, 0.003))):

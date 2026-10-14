@@ -157,7 +157,7 @@ def render_youry_clip(
     work.mkdir(parents=True, exist_ok=True)
     try:
         try:
-            rendered, recipe = ca.assemble_clip(work / f"clip_{uuid.uuid4().hex}.mp4", seed=seed)
+            rendered, recipe = ca.assemble_clip(work / f"clip_{uuid.uuid4().hex}.mp4", seed=seed, fit_discord=False)
         except ca.ClipAssemblyError as exc:
             raise EngineError(str(exc)) from exc
         duration = probe_duration(rendered)

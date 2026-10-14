@@ -894,7 +894,7 @@ def image_to_video(
     if audio_path and audio_path.exists():
         cmd.extend(["-stream_loop", "-1", "-i", str(audio_path.resolve())])
     # Output options (after all inputs). No -vf when fade_sec == 0 (pas de fade-in).
-    out_opts = ["-frames:v", str(total_frames), "-r", str(FPS), "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    out_opts = ["-frames:v", str(total_frames), "-r", str(FPS), "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p"]
     if fade_sec > 0:
         out_opts = ["-vf", vf] + out_opts
     cmd.extend(out_opts)
@@ -980,6 +980,10 @@ def overlay_caption_on_variation(
         str(FPS),
         "-c:v",
         "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "16",
         "-pix_fmt",
         "yuv420p",
         "-map",
@@ -988,6 +992,8 @@ def overlay_caption_on_variation(
         "1:a?",    # audio: piste audio de la variation si présente
         "-c:a",
         "aac",
+        "-b:a",
+        "192k",
         "-shortest",
         out_abs,
     ]
