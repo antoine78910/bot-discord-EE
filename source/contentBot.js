@@ -25,6 +25,7 @@ const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = requir
 const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
 const { startFileServer } = require('./contentFiles');
 const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
+const { handleCreatorInteraction, publishCreatorChannels } = require('./creatorChannels');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
 
@@ -61,6 +62,9 @@ client.once(Events.ClientReady, async (readyClient) => {
     await publishPayoutPanel(readyClient).catch((error) => {
         console.warn('[PAYOUT] publish failed:', error?.message || error);
     });
+    await publishCreatorChannels(readyClient).catch((error) => {
+        console.warn('[CREATOR] publish failed:', error?.message || error);
+    });
 });
 
 client.on(Events.GuildCreate, () => {
@@ -74,6 +78,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
         }
         if (await handlePayoutInteraction(interaction)) return;
+        if (await handleCreatorInteraction(interaction)) return;
         await handlePanelInteraction(interaction);
     } catch (error) {
         console.error('[CONTENT-BOT] interaction error:', error);
