@@ -34,7 +34,6 @@ const REGISTRATION_LOG_CHANNEL_ID =
 const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
 const PAY_RATE = process.env.CREATOR_PAY_RATE || '$500 per 500k views';
 const MIN_VIEWS = process.env.CREATOR_MIN_VIEWS || '1k views';
-const WARMUP_GUIDE = 'https://app.notion.com/p/Account-setup-Warm-up-Guide-d9c6d9521ad240758b815fb5e26f4f39';
 const MIN_T1 = process.env.CREATOR_MIN_T1 || '20%';
 const PINNED_IDS = (() => {
     try {
@@ -108,8 +107,6 @@ function templates(link) {
             embed(
                 `💸 ${BRAND} — ACCOUNT SETUP`,
                 [
-                    `📖 **Full guide (source):** ${WARMUP_GUIDE}`,
-                    '',
                     '**Step 1: create an email address**',
                     'Create a new email address dedicated to your TikTok and Instagram accounts. Ideally use Gmail, Yahoo, Outlook or iCloud.',
                     "This is **your personal account**: you don't need to share your password or login details.",
@@ -146,8 +143,6 @@ function templates(link) {
             embed(
                 `💸 ${BRAND} — ACCOUNT WARM-UP (MANDATORY)`,
                 [
-                    `📖 **Full guide (source):** ${WARMUP_GUIDE}`,
-                    '',
                     '**The first 24 to 72 hours are crucial**',
                     'Before you post anything, you need to train your TikTok and Instagram accounts to understand your niche: **e-commerce + dropshipping + side hustles + making money online.**',
                     'Your search bar, your For You feed and your Explore page should gradually fill up with this type of content.',
@@ -229,7 +224,7 @@ function templates(link) {
                     '',
                     '────────',
                     '**DAY 4 — Warm-up check**',
-                    'After the 3 warm-up days, before posting your first video on day 4, send the following in the Discord group:',
+                    'After the 3 warm-up days, before posting your first video on day 4, **open a support ticket** and send the following so we can validate your warm-up:',
                     '',
                     '**TikTok**',
                     '• a screenshot of your screen time;',
@@ -239,7 +234,7 @@ function templates(link) {
                     '• a screenshot of your screen time;',
                     '• **a 30-second screen recording of your Explore/Reels feed**.',
                     '',
-                    'This confirms that **BOTH TikTok AND Instagram have been warmed up properly.**',
+                    'This confirms that **BOTH TikTok AND Instagram have been warmed up properly.** Wait for our validation in the ticket before you start posting.',
                 ].join('\n')
             ),
         ],
