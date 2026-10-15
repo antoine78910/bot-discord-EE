@@ -54,11 +54,13 @@ BROAD_DIR = ROOT / "broad"
 PRODUCTS_DIR = ROOT / "products"
 WORKFLOWS_FILE = ROOT / "workflows.json"
 CAPTIONS_FILE = ROOT / "captions.json"
-CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-SemiBold.ttf"
-CAPTION_SIZE = 58
-CAPTION_MAX_WIDTH = 860
-# Upper third: clear of the TikTok/Reels UI at the bottom and on the right.
-CAPTION_Y = "main_h*0.15"
+CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-Bold.ttf"
+CAPTION_SIZE = 74
+CAPTION_STROKE = 5
+CAPTION_MAX_WIDTH = 900
+CAPTION_LINE_PITCH = 97
+# Same placement as the YouRy text hooks ("mid"): upper third, clear of the TikTok/Reels UI.
+CAPTION_Y = "(main_h-overlay_h)*0.24"
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
@@ -205,26 +207,25 @@ def _wrap(text: str, font, draw: ImageDraw.ImageDraw, max_width: int) -> list[st
 
 
 def _caption_png(text: str, path: Path) -> Path:
-    """Black text on a white rounded box (TikTok text style), transparent around it."""
+    """White text with a black outline on a transparent 1080px strip, like the YouRy text hooks."""
     font = _caption_font(CAPTION_SIZE)
     probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     lines = _wrap(text, font, probe, CAPTION_MAX_WIDTH)
-    ascent, descent = font.getmetrics() if hasattr(font, "getmetrics") else (CAPTION_SIZE, 0)
-    line_height = ascent + descent
-    gap = int(CAPTION_SIZE * 0.18)
-    pad_x, pad_y = 34, 22
-    text_width = max(int(probe.textlength(line, font=font)) for line in lines)
-    width = text_width + pad_x * 2
-    height = line_height * len(lines) + gap * (len(lines) - 1) + pad_y * 2
+    pad = 48
+    height = CAPTION_LINE_PITCH * len(lines) + pad * 2
 
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    image = Image.new("RGBA", (WIDTH, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=26, fill=(255, 255, 255, 245))
-    y = pad_y
-    for line in lines:
-        line_width = probe.textlength(line, font=font)
-        draw.text(((width - line_width) / 2, y), line, font=font, fill=(0, 0, 0, 255))
-        y += line_height + gap
+    for row, line in enumerate(lines):
+        draw.text(
+            (WIDTH / 2, pad + CAPTION_LINE_PITCH * row + CAPTION_LINE_PITCH / 2),
+            line,
+            font=font,
+            anchor="mm",
+            fill=(255, 255, 255, 255),
+            stroke_width=CAPTION_STROKE,
+            stroke_fill=(0, 0, 0, 255),
+        )
     image.save(path)
     return path
 
