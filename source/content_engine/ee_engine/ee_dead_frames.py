@@ -58,7 +58,7 @@ BRANCHES = {
         ([("ig", "product")], SLIDE_LINES[8]),
     ),
     "Workflow": (
-        ([("show youry", "broad")], ((("4) Make your ads with", "Youry workflows"),), "top")),
+        ([("show youry", "broad")], (("4) Make your ads with", "Youry workflows"), "top")),
         ([("ads", "product"), ("show workflow", "any")], (
             [("20 winning ads,", "ready to sell"), ("Get 20 proven ads", "in minutes")], "top")),
         ([("meta", "broad")], (
