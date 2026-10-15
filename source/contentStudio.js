@@ -299,8 +299,7 @@ async function deliverCarouselItems(send, items, prefix) {
             const hosted = await publishFiles([...(item.slides || []), item.zip], `Carousel ${index + 1}/${items.length} — ${item.hook}`);
             const zip = hosted.files[hosted.files.length - 1];
             await send({
-                content: [...header, '👀 Previews below are recompressed by Discord. ⬇️ Download the originals from the links.'].join('\n'),
-                files: slides,
+                content: [...header, '⬇️ Download from the links below (original JPGs with iPhone EXIF, do not download from Discord).'].join('\n'),
                 components: [
                     linkRow([
                         { label: 'Download ZIP (all slides)', url: zip.download },
