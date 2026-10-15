@@ -677,6 +677,50 @@ async function syncRegistrationLog(client) {
             .catch((error) => console.warn('[CREATOR] Could not add validate buttons:', error?.message || error));
     }
     console.log(`[CREATOR] ${registrations.size} registration(s) stored for /${USERNAME_COMMAND}`);
+    if (channel.guild) await backfillCreatorRoles(channel.guild);
+}
+
+/** Give the creator role to everyone who already applied (not rejected), and log why it fails. */
+async function backfillCreatorRoles(guild) {
+    if (!CREATOR_ROLE_ID) return;
+    const role = await guild.roles.fetch(CREATOR_ROLE_ID).catch(() => null);
+    const me = guild.members.me || (await guild.members.fetchMe().catch(() => null));
+    if (!role) {
+        console.warn(`[CREATOR] Creator role ${CREATOR_ROLE_ID} not found in ${guild.name}.`);
+        return;
+    }
+    const canManage = Boolean(me?.permissions.has(PermissionFlagsBits.ManageRoles));
+    const above = Boolean(me && me.roles.highest.position > role.position);
+    console.log(
+        `[CREATOR] Role check: "${role.name}" pos ${role.position} · bot top role "${me?.roles.highest.name}" pos ${me?.roles.highest.position} · Manage Roles ${canManage ? 'yes' : 'NO'} · bot above role ${above ? 'yes' : 'NO'}`
+    );
+    if (!canManage || !above) {
+        console.warn('[CREATOR] Cannot grant the creator role: give the bot Manage Roles and move its role above the creator role.');
+        return;
+    }
+    const counts = { granted: 0, already: 0, left: 0, failed: 0 };
+    for (const record of registrations.values()) {
+        if (record.status === 'rejected') continue;
+        const member = await guild.members.fetch(record.discordId).catch(() => null);
+        if (!member) {
+            counts.left += 1;
+            continue;
+        }
+        if (member.roles.cache.has(CREATOR_ROLE_ID)) {
+            counts.already += 1;
+            continue;
+        }
+        try {
+            await member.roles.add(CREATOR_ROLE_ID, 'Creator application on file');
+            counts.granted += 1;
+        } catch (error) {
+            counts.failed += 1;
+            console.warn(`[CREATOR] Could not grant creator role to ${member.user.tag}:`, error?.message || error);
+        }
+    }
+    console.log(
+        `[CREATOR] Creator role backfill: ${counts.granted} granted, ${counts.already} already had it, ${counts.left} not in server, ${counts.failed} failed`
+    );
 }
 
 async function grantCreatorRole(interaction) {
