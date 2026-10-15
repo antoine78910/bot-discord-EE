@@ -51,7 +51,7 @@ const KINDS = {
     workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success, staffOnly: true },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
-    deadframes: { label: 'is dead carousel (video frames)', button: 'Is dead (frames)', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary, staffOnly: true },
+    deadframes: { label: 'is dead carousel (video frames)', button: 'Is dead (frames)', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary, staffOnly: true, soon: true },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
 };
 
@@ -70,6 +70,7 @@ function panelEmbed() {
                 '**Carousels**',
                 '🖼️ **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
                 '🖼️ **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
+                '🖼️ **Is dead (frames)**: same 10 slides built from real workflow screen recordings, unlimited variations · *Soon*',
                 '🖼️ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
                 'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
@@ -97,14 +98,23 @@ function pickerComponents(quantity, staff = false) {
                 default: i + 1 === quantity,
             }))
         );
-    const kinds = Object.entries(KINDS).filter(([, meta]) => staff || !meta.staffOnly);
-    const buttons = kinds.map(([kind, meta]) =>
-        new ButtonBuilder()
+    // Staff-only kinds marked "soon" stay visible to everyone else as a disabled teaser.
+    const kinds = Object.entries(KINDS).filter(([, meta]) => staff || !meta.staffOnly || meta.soon);
+    const buttons = kinds.map(([kind, meta]) => {
+        if (meta.staffOnly && !staff) {
+            return new ButtonBuilder()
+                .setCustomId(`${IDS.makePrefix}soon:${kind}`)
+                .setLabel(`${meta.button} · Soon`)
+                .setEmoji(meta.emoji)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true);
+        }
+        return new ButtonBuilder()
             .setCustomId(`${IDS.makePrefix}${kind}:${quantity}`)
             .setLabel(quantity > 1 ? `${meta.button} ×${quantity}` : meta.button)
             .setEmoji(meta.emoji)
-            .setStyle(meta.style)
-    );
+            .setStyle(meta.style);
+    });
     const rows = [new ActionRowBuilder().addComponents(select)];
     const perRow = buttons.length > 5 ? 3 : 5;
     for (let index = 0; index < buttons.length; index += perRow) {
