@@ -199,7 +199,11 @@ function runEngine(args, onProgress) {
             clearTimeout(timer);
             const line = stdout.trim().split('\n').filter(Boolean).pop() || '';
             try {
-                resolve(JSON.parse(line));
+                const result = JSON.parse(line);
+                if (result?.errors?.length) {
+                    console.error(`[CONTENT] engine ${args[0]} errors:`, result.errors.join(' | '), '\n', stderr.slice(-6000));
+                }
+                resolve(result);
             } catch {
                 console.error('[CONTENT] engine stderr:', stderr.slice(-3000));
                 reject(new Error('Content engine returned no result (check bot logs).'));

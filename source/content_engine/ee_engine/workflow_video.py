@@ -312,9 +312,11 @@ def _render(
     durations = [probe_duration(path) for path in sources]
     total = sum(durations)
 
-    args: list[str] = []
+    # 15-20 inputs are opened at once: one decoder thread each keeps the process
+    # under container thread limits (otherwise the x264 encoder fails to start).
+    args: list[str] = ["-filter_complex_threads", "2"]
     for path in sources:
-        args += ["-i", str(path)]
+        args += ["-threads", "1", "-i", str(path)]
     music_index = len(sources)
     args += ["-i", str(pick.music)]
 
@@ -390,7 +392,7 @@ def _render(
         "-filter_complex", ";".join(filters),
         "-map", video_out, "-map", "[aout]",
         "-t", f"{total:.3f}",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "17",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-threads", "4",
         "-c:a", "aac", "-b:a", "192k",
         "-map_metadata", "-1",
         "-movflags", "+faststart",

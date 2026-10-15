@@ -6,8 +6,14 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path
+
+_ERROR_LINE = re.compile(
+    r"error|invalid|failed|cannot|unable|no such|not found|unknown|out of memory|too many|incorrect",
+    re.IGNORECASE,
+)
 
 
 class EngineError(Exception):
@@ -73,8 +79,13 @@ def run_ffmpeg(args: list[str], *, timeout: int = 600) -> None:
     try:
         subprocess.run(cmd, check=True, timeout=timeout, capture_output=True)
     except subprocess.CalledProcessError as exc:
-        stderr = (exc.stderr or b"").decode("utf-8", errors="replace")[-900:]
-        raise EngineError(f"FFmpeg failed: {stderr}") from exc
+        stderr = (exc.stderr or b"").decode("utf-8", errors="replace")
+        print(f"[ffmpeg] exit {exc.returncode}\n{stderr[-6000:]}", file=sys.stderr, flush=True)
+        # The first error lines name the cause; the tail is only the shutdown cascade.
+        lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+        causes = [line for line in lines if _ERROR_LINE.search(line)]
+        summary = "\n".join(causes[:5]) or "\n".join(lines[-6:])
+        raise EngineError(f"FFmpeg failed: {summary[:900]}") from exc
     except subprocess.TimeoutExpired as exc:
         raise EngineError("FFmpeg timed out.") from exc
 
