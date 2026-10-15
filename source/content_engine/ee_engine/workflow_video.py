@@ -75,9 +75,6 @@ MUSIC_VOLUME = 0.8
 # Sale notification clips are recorded quietly: boost them on top of the full-volume music.
 KEPT_AUDIO_VOLUME = 3.0
 
-# Product clip pools also hold other products' clips under this prefix (for from: product_or_other).
-OTHER_PREFIX = "~other:"
-
 _VARIANT_SUFFIX = re.compile(r"[\s_-]*(\(\d+\)|\d+)$")
 _SEPARATORS = re.compile(r"[\s_-]+")
 
@@ -128,8 +125,6 @@ def _pool(step: dict, broad: dict, product: dict) -> list[Path]:
         return product.get(key, [])
     if source == "any":
         return product.get(key) or broad.get(key, [])
-    if source == "product_or_other":
-        return product.get(key) or product.get(OTHER_PREFIX + key, [])
     return broad.get(key, [])
 
 
@@ -144,6 +139,13 @@ def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
             if branch.get("label"):
                 path.append(branch["label"])
             _walk(branch["steps"], broad, product, rng, path, plan, missing, skipped)
+        elif "first_of" in node:
+            # First step that has clips for this product (e.g. its own ig, else meta).
+            step = next((s for s in node["first_of"] if _pool(s, broad, product)), None)
+            if step:
+                plan.append(step)
+            elif not node.get("optional"):
+                missing.append(" or ".join(s["clip"] for s in node["first_of"]))
         elif "any_clip" in node:
             # One clip drawn evenly across every variant of these steps (12 katching + 2 result = 1/14 each).
             options = [step for step in node["any_clip"] if _pool(step, broad, product)]
@@ -298,8 +300,7 @@ def plan_workflow(
         raise EngineError("No workflow defined in workflow/workflows.json.")
     if workflow and workflow not in workflows:
         raise EngineError(f"Unknown workflow '{workflow}'. Known: {', '.join(workflows)}.")
-    products_all = _products()
-    products = [p for p in products_all if not product or p.name.lower() == product.lower()]
+    products = [p for p in _products() if not product or p.name.lower() == product.lower()]
     if not products:
         raise EngineError("No product folder in workflow/products" + (f" named '{product}'." if product else "."))
 
@@ -309,10 +310,6 @@ def plan_workflow(
         name = workflow or rng.choice(list(workflows))
         folder = rng.choice(products)
         product_clips = _clips(folder)
-        for other in products_all:
-            if other != folder:
-                for key, paths in _clips(other).items():
-                    product_clips.setdefault(OTHER_PREFIX + key, []).extend(paths)
         path: list[str] = []
         plan: list[dict] = []
         missing: list[str] = []

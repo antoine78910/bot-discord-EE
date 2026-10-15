@@ -1,5 +1,5 @@
 {
-  "_help": "See ee_engine/workflow_video.py. from: broad | product | any (product clip if it exists, else broad) | product_or_other (product clip if it exists, else another product's). caption: use another step's texts from captions.json. optional: skip when no clip. keep_audio: keep the clip's own sound over the music (all other clips are muted). one_of: pick one branch (weight). chance: play the steps with that probability. any_clip: exactly one clip drawn evenly across all variants of the listed steps. clip = file name without the variant number.",
+  "_help": "See ee_engine/workflow_video.py. from: broad | product | any (product clip if it exists, else broad). first_of: the first listed step that has clips (ig for the product, else meta). caption: use another step's texts from captions.json. optional: skip when no clip. keep_audio: keep the clip's own sound over the music (all other clips are muted). one_of: pick one branch (weight). chance: play the steps with that probability. any_clip: exactly one clip drawn evenly across all variants of the listed steps. clip = file name without the variant number.",
   "dropshipping": [
     {
       "one_of": [
@@ -47,7 +47,12 @@
             { "clip": "generate", "from": "broad" },
             { "clip": "loading ugc", "from": "product", "optional": true },
             { "clip": "ugc", "from": "product" },
-            { "clip": "ig", "from": "product_or_other" },
+            {
+              "first_of": [
+                { "clip": "ig", "from": "product" },
+                { "clip": "meta", "from": "broad" }
+              ]
+            },
             {
               "any_clip": [
                 { "clip": "katching", "from": "broad", "keep_audio": true, "caption": "result" },
