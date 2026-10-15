@@ -62,6 +62,8 @@ CAPTION_LINE_PITCH = 97
 CAPTION_EMOJI_GAP = 2
 # Same placement as the YouRy text hooks ("mid"): upper third, clear of the TikTok/Reels UI.
 CAPTION_Y = "(main_h-overlay_h)*0.24"
+# Browser recordings with the URL bar in the upper third: caption goes above it.
+CAPTION_Y_BY_STEP = {"tiktok": "main_h*0.04", "mademebuyit": "main_h*0.04"}
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
@@ -394,7 +396,7 @@ def _render(
 
     kept: list[tuple[int, float, float]] = []
     offset = durations[0]
-    for index, ((clip, keep_audio, _), duration, caption) in enumerate(
+    for index, ((clip, keep_audio, key), duration, caption) in enumerate(
         zip(clips, durations[1:], captions), start=1
     ):
         if keep_audio and has_audio_stream(clip):
@@ -403,7 +405,7 @@ def _render(
             args += ["-i", str(caption)]
             label = f"[cap{index}]"
             filters.append(
-                f"{video_out}[{next_input}:v]overlay=x=(main_w-overlay_w)/2:y={CAPTION_Y}:"
+                f"{video_out}[{next_input}:v]overlay=x=(main_w-overlay_w)/2:y={CAPTION_Y_BY_STEP.get(key, CAPTION_Y)}:"
                 f"enable='between(t,{offset:.3f},{offset + duration:.3f})'{label}"
             )
             video_out = label

@@ -96,15 +96,12 @@
     "AI writes, films and edits the ad",
     "Generating a UGC ad with AI"
   ],
-  "show ugc": [
-    "Your UGC ad is ready",
-    "Here's the AI UGC ad",
-    "A UGC ad without hiring a creator"
-  ],
   "ugc": [
     "No creator, no camera, just AI",
     "This ad was 100% made with AI",
-    "Looks real, right? It's AI"
+    "Looks real, right? It's AI",
+    "Your UGC ad is ready",
+    "A UGC ad without hiring a creator"
   ],
   "ig": [
     "Post it on Instagram and TikTok",
@@ -155,7 +152,8 @@
   "result": [
     "And the sales start coming in",
     "Then watch the orders come in",
-    "This is the result",
+    "Make bank 💰",
+    "Make sh*t ton of money 💰",
     "Thank me later 🤑",
     "You can thank me later 🤑"
   ]

@@ -46,7 +46,6 @@
             { "clip": "paste lta", "from": "broad" },
             { "clip": "generate", "from": "broad" },
             { "clip": "loading ugc", "from": "product", "optional": true },
-            { "clip": "show ugc", "from": "product", "optional": true },
             { "clip": "ugc", "from": "product" },
             { "clip": "ig", "from": "product", "optional": true },
             {
