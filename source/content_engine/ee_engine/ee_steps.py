@@ -36,7 +36,7 @@ BADGE_SIZE = 340
 LOGO_DIR = Path(__file__).resolve().parents[1] / "carousel" / "assets" / "logos" / "steps"
 
 # Wide wordmarks: keep only the symbol on the left, the name is already in the text.
-ICON_ONLY: set[str] = {"winninghunter.png"}
+ICON_ONLY: set[str] = set()
 
 # Logos that read too small at the default size.
 LOGO_SCALE = {"dropmagic.png": 1.05, "tiktok.png": 1.35, "youry.png": 1.3, "higgsfield.png": 1.2}
