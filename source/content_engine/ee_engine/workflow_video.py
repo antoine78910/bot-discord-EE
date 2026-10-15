@@ -47,7 +47,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_tools import EngineError, has_audio_stream, probe_duration, run_ffmpeg
-from .videos import VideoResult, _finalize
+from .videos import SILENT_DETAIL, VideoResult, _finalize, silent_turn
 
 ROOT = Path(__file__).resolve().parents[1] / "workflow"
 BROAD_DIR = ROOT / "broad"
@@ -490,11 +490,15 @@ def render_workflow_video(
         rendered = work / "workflow.mp4"
         _render(pick, clips, captions, rendered, rng)
         duration = probe_duration(rendered)
-        final = _finalize(rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature)
+        silent = silent_turn("workflow")
+        final = _finalize(
+            rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature, silent=silent
+        )
+        music = "none" if silent else pick.music.stem
         text = pick.text_hook.stem if pick.text_hook else "none"
         scenes = [f"`0` hook · {pick.hook.stem} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
         for i, ((clip, keep, key), caption) in enumerate(zip(clips, texts), start=1):
-            sound = " 🔊" if keep else ""
+            sound = " 🔊" if keep and not silent else ""
             scenes.append(
                 f"`{i}` **{key}** · {clip.stem}{sound} · {probe_duration(clip):.1f}s"
                 + (f" · “{caption}”" if caption else " · no caption")
@@ -504,7 +508,8 @@ def render_workflow_video(
             path=final,
             duration=duration,
             details=[
-                f"**Workflow:** {name} · **Product:** {folder.name} · **Music:** {pick.music.stem}",
+                f"**Workflow:** {name} · **Product:** {folder.name} · **Music:** {music}",
+                *([SILENT_DETAIL] if silent else []),
                 "Branches: " + (" → ".join(branches) or "none"),
                 f"**Scenes ({len(clips) + 1}):**",
                 *scenes,

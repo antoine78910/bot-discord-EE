@@ -19,8 +19,10 @@ from pathlib import Path
 
 from PIL import Image
 
-from .ffmpeg_tools import EngineError, compress_to_size, probe_duration
+from .ffmpeg_tools import EngineError, compress_to_size, probe_duration, run_ffmpeg
 from .video_metadata import inject_iphone_signature
+
+SILENT_DETAIL = "**Sound:** none, add a trending sound on TikTok / Instagram"
 
 
 @dataclass
@@ -62,7 +64,35 @@ def pick_captions(count: int) -> list[str]:
     return random.choices(texts, weights=weights, k=count)
 
 
-def _finalize(rendered: Path, out_dir: Path, *, rng: random.Random, max_bytes: int, iphone_signature: bool) -> Path:
+def silent_turn(kind: str) -> bool:
+    """Every other video of each kind ships without an audio track (persisted across runs)."""
+    ca = _youry()
+    recent = ca._load_recent()
+    key = f"silent_turn:{kind}"
+    silent = bool(recent.get(key, False))
+    recent[key] = not silent
+    ca.save_recent(recent)
+    return silent
+
+
+def _strip_audio(path: Path) -> Path:
+    silent = path.with_name(f"{path.stem}_silent.mp4")
+    run_ffmpeg(["-i", str(path), "-map", "0:v:0", "-c", "copy", "-movflags", "+faststart", str(silent)])
+    path.unlink(missing_ok=True)
+    return silent
+
+
+def _finalize(
+    rendered: Path,
+    out_dir: Path,
+    *,
+    rng: random.Random,
+    max_bytes: int,
+    iphone_signature: bool,
+    silent: bool = False,
+) -> Path:
+    if silent:
+        rendered = _strip_audio(rendered)
     final = compress_to_size(rendered, max_bytes)
     file_number = rng.randint(1000, 9999)
     if iphone_signature:
@@ -124,17 +154,18 @@ def render_variator_video(
             raise EngineError("Variator: caption overlay render failed.")
 
         duration = probe_duration(rendered)
-        final = _finalize(rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature)
-        return VideoResult(
-            kind="variator",
-            path=final,
-            duration=duration,
-            details=[
-                f"**Caption:** {caption}",
-                f"Template `{template_paths[tpl_idx].name}` · music `{audio.name if audio else 'none'}`",
-                "Steps: " + " · ".join(f"{i + 1}. {t}" for i, t in enumerate(lines[:3])),
-            ],
+        silent = silent_turn("variator")
+        final = _finalize(
+            rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature, silent=silent
         )
+        details = [
+            f"**Caption:** {caption}",
+            f"Template `{template_paths[tpl_idx].name}` · music `{audio.name if audio else 'none'}`",
+            "Steps: " + " · ".join(f"{i + 1}. {t}" for i, t in enumerate(lines[:3])),
+        ]
+        if silent:
+            details.append(SILENT_DETAIL)
+        return VideoResult(kind="variator", path=final, duration=duration, details=details)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -161,12 +192,13 @@ def render_youry_clip(
         except ca.ClipAssemblyError as exc:
             raise EngineError(str(exc)) from exc
         duration = probe_duration(rendered)
-        final = _finalize(rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature)
-        return VideoResult(
-            kind="youry",
-            path=final,
-            duration=duration,
-            details=ca.recipe_summary(recipe).split("\n"),
+        silent = silent_turn("youry")
+        final = _finalize(
+            rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature, silent=silent
         )
+        details = ca.recipe_summary(recipe).split("\n")
+        if silent:
+            details.append(SILENT_DETAIL)
+        return VideoResult(kind="youry", path=final, duration=duration, details=details)
     finally:
         shutil.rmtree(work, ignore_errors=True)
