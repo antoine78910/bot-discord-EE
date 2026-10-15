@@ -55,6 +55,7 @@ PRODUCTS_DIR = ROOT / "products"
 WORKFLOWS_FILE = ROOT / "workflows.json"
 CAPTIONS_FILE = ROOT / "captions.json"
 HOOKS_TEXT_DIR = ROOT / "hooks_text"
+HOOK_VIDEOS_DIR = ROOT / "hook videos"
 CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-Bold.ttf"
 CAPTION_SIZE = 74
 CAPTION_STROKE = 5
@@ -338,10 +339,12 @@ def _youry():
 
 
 def _pick_hook(rng: random.Random) -> HookPick:
-    """YouRy hook videos and music; text hooks come from the workflow's own pool."""
+    """YouRy hook videos plus the workflow's own, YouRy music, workflow text hooks."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
     hooks = ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT)
+    if HOOK_VIDEOS_DIR.is_dir():
+        hooks += ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT)
     tracks = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT)
     if not hooks:
         raise EngineError(f"No hook videos in {ca.hooks_dir()}.")
@@ -349,7 +352,7 @@ def _pick_hook(rng: random.Random) -> HookPick:
         raise EngineError(f"No music in {ca.music_dir()}.")
     recent = ca._load_recent()
     picked_text = ca._pick_fresh(rng, text_hooks, "workflow_text_hooks", recent)
-    hook = ca._pick_fresh(rng, hooks, "hooks", recent)
+    hook = ca._pick_fresh(rng, hooks, "workflow_hooks", recent)
     music = ca._pick_fresh(rng, tracks, "music", recent)
     try:
         ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
