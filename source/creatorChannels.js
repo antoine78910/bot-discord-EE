@@ -42,10 +42,11 @@ const PAY_RATE = process.env.CREATOR_PAY_RATE || '$500 per 500k views';
 const MIN_VIEWS = process.env.CREATOR_MIN_VIEWS || '1k views';
 const MIN_T1 = process.env.CREATOR_MIN_T1 || '20%';
 const PINNED_IDS = (() => {
+    const defaults = { referral: '1556165435689402398' };
     try {
-        return JSON.parse(process.env.CREATOR_CHANNEL_IDS || '{}');
+        return { ...defaults, ...JSON.parse(process.env.CREATOR_CHANNEL_IDS || '{}') };
     } catch {
-        return {};
+        return defaults;
     }
 })();
 
@@ -81,7 +82,12 @@ const CHANNELS = {
     payouts: { name: '💸-payouts', match: 'payouts' },
     content_bot: { name: '🎬-content-bot', match: 'content-bot' },
     payout_submission: { name: '💳-payout-submission', match: 'payout-submission' },
+    referral: { name: '🤝-referral', match: 'referral' },
+    support: { name: '🎟️-support', match: 'support' },
 };
+
+/** Channels that are linked or pinned by id, but never created by the bot. */
+const NEVER_CREATE = ['content_bot', 'payout_submission', 'referral', 'support'];
 
 /** Exact names of channels this bot created and no longer uses. */
 const RETIRED_CHANNELS = ['🎬-formats'];
@@ -296,6 +302,28 @@ function templates(link) {
                 ].join('\n')
             ),
         ],
+        referral: [
+            embed(
+                'Invite creators. Earn cash. 💸',
+                [
+                    'Know a creator who would be a great fit for Ecom Efficiency? Invite them and earn rewards based on the content they create.',
+                    '',
+                    '💰 **Earn $100 per referred creator**',
+                    '',
+                    '**How it works**',
+                    '1. Invite the creator to this **Discord server**',
+                    `2. They register in ${link('apply')} and start creating`,
+                    '3. Their content reaches **100K views** in total',
+                    `4. You open a ticket in ${link('support')} and **mention them** (@their Discord name)`,
+                    '5. We verify their views → you get your **$100**',
+                    '',
+                    '**Example:**',
+                    'You invite Sarah to the Discord → Sarah registers and creates 3 Ecom Efficiency videos → her first video gets 60K views, her second gets 30K, and her third gets 10K → **100K total views** → you open a ticket and mention @Sarah → you earn **$100**.',
+                    '',
+                    "⚠️ The creator must join through this Discord and register in the apply channel, otherwise we can't track your referral.",
+                ].join('\n')
+            ),
+        ],
         apply: [
             embed(
                 '🚀 Welcome to the Ecom Efficiency Creator Program',
@@ -336,7 +364,7 @@ async function resolveChannels(guild) {
             resolved[key] = found;
             continue;
         }
-        if (key === 'content_bot' || key === 'payout_submission') continue;
+        if (NEVER_CREATE.includes(key)) continue;
         try {
             resolved[key] = await guild.channels.create({
                 name: spec.name,
