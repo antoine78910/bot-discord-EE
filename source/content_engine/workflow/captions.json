@@ -1,0 +1,156 @@
+{
+  "_help": "On-screen caption per workflow step (key = clip name from workflows.json). One variant is drawn at random per video; the same text is never used twice in one video. Remove a key or leave [] for no caption.",
+
+  "tiktok": [
+    "First, find a winning product on TikTok",
+    "Start on TikTok to spot trending products",
+    "Open TikTok to find your next winner"
+  ],
+  "mademebuyit": [
+    "Search #tiktokmademebuyit",
+    "Type #tiktokmademebuyit in the search bar",
+    "Look up #tiktokmademebuyit"
+  ],
+  "tiktok show": [
+    "Pick a product that's already going viral",
+    "This one is blowing up right now",
+    "Found a product with millions of views"
+  ],
+
+  "ecomefficiency": [
+    "I get all my tools from Ecom Efficiency",
+    "All the premium ecom tools in one place",
+    "Every tool I use is on Ecom Efficiency"
+  ],
+  "show kalodata": [
+    "Find a winning product on Kalodata",
+    "Open Kalodata for product research",
+    "Start with Kalodata to find winners"
+  ],
+  "product kalodata": [
+    "Sort by revenue to find the best sellers",
+    "Filter the products making the most sales",
+    "Look for products with exploding sales"
+  ],
+  "kalodata show product": [
+    "This one is making thousands per day",
+    "Found a winner with crazy sales",
+    "Pick a product that's already selling"
+  ],
+
+  "aliexpress": [
+    "Find the same product on AliExpress",
+    "Source it on AliExpress for a few dollars",
+    "Grab the supplier on AliExpress"
+  ],
+  "aliexpress link": [
+    "Copy the AliExpress product link",
+    "Copy the product link",
+    "Copy the link, you'll need it next"
+  ],
+
+  "show dropmagic": [
+    "Now build your store with Dropmagic",
+    "Open Dropmagic to build the store",
+    "Build the whole store with AI on Dropmagic"
+  ],
+  "new store": [
+    "Create a new store and paste the link",
+    "Paste the link to create a new store",
+    "Start a new store from the product link"
+  ],
+  "loading dropmagic": [
+    "AI builds the whole Shopify store",
+    "Wait a few seconds while AI builds it",
+    "The AI does all the work for you"
+  ],
+  "shop": [
+    "Your store is ready in seconds",
+    "Store done, ready to sell",
+    "A full Shopify store in under a minute"
+  ],
+
+  "show youry": [
+    "Now create your ads with Youry",
+    "Open Youry to make the ads",
+    "Time to make the ads with Youry"
+  ],
+
+  "show lta": [
+    "Use Link to Ad",
+    "Open Link to Ad",
+    "Go to Link to Ad"
+  ],
+  "paste lta": [
+    "Paste your store link",
+    "Drop your store link here",
+    "Paste the product page link"
+  ],
+  "generate": [
+    "Hit generate",
+    "Click generate",
+    "Generate the ad"
+  ],
+  "loading ugc": [
+    "AI creates a UGC ad for you",
+    "AI writes, films and edits the ad",
+    "Generating a UGC ad with AI"
+  ],
+  "show ugc": [
+    "Your UGC ad is ready",
+    "Here's the AI UGC ad",
+    "A UGC ad without hiring a creator"
+  ],
+  "ugc": [
+    "No creator, no camera, just AI",
+    "This ad was 100% made with AI",
+    "Looks real, right? It's AI"
+  ],
+  "ig": [
+    "Post it on Instagram and TikTok",
+    "Launch it on Instagram",
+    "Post the ad on your socials"
+  ],
+
+  "workflow": [
+    "Use a workflow for static ads",
+    "Open the static ads workflow",
+    "Create static ads with a workflow"
+  ],
+  "static ads": [
+    "Pick the ad styles you want",
+    "Choose your static ad templates",
+    "Select the formats you like"
+  ],
+  "input workflow": [
+    "Add your product image",
+    "Upload your product photo",
+    "Drop in your product"
+  ],
+  "show workflow": [
+    "AI generates every ad at once",
+    "The workflow runs on its own",
+    "Let the workflow do the work"
+  ],
+  "ads": [
+    "Ready-to-run ads in minutes",
+    "Here are your ads",
+    "Scroll-stopping ads, done in minutes"
+  ],
+  "meta": [
+    "Launch them on Meta Ads",
+    "Upload them to Meta Ads",
+    "Run the ads on Facebook and Instagram"
+  ],
+  "katching": [
+    "Ka-ching! First sales",
+    "Ka-ching!",
+    "That sound never gets old"
+  ],
+
+  "result": [
+    "And the sales start coming in",
+    "Then watch the orders come in",
+    "This is the result"
+  ]
+}

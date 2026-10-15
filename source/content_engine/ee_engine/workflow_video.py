@@ -29,6 +29,9 @@ until every required step has a clip. One variant is drawn per step.
 The video opens on a YouRy hook (silent, with a YouRy text hook on top) and a
 YouRy music track plays over everything. Body clips are muted except steps
 marked keep_audio, whose sound is mixed over the music.
+
+Each body clip gets an on-screen caption drawn from workflow/captions.json
+(one random variant per step, never the same text twice in a video).
 """
 
 from __future__ import annotations
@@ -41,6 +44,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageFont
+
 from .ffmpeg_tools import EngineError, has_audio_stream, probe_duration, run_ffmpeg
 from .videos import VideoResult, _finalize
 
@@ -48,6 +53,12 @@ ROOT = Path(__file__).resolve().parents[1] / "workflow"
 BROAD_DIR = ROOT / "broad"
 PRODUCTS_DIR = ROOT / "products"
 WORKFLOWS_FILE = ROOT / "workflows.json"
+CAPTIONS_FILE = ROOT / "captions.json"
+CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-SemiBold.ttf"
+CAPTION_SIZE = 58
+CAPTION_MAX_WIDTH = 860
+# Upper third: clear of the TikTok/Reels UI at the bottom and on the right.
+CAPTION_Y = "main_h*0.15"
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
@@ -133,16 +144,89 @@ def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
                 missing.append(f'{node.get("from", "broad")}:{node["clip"]}')
 
 
-def _pick(plan: list[dict], broad: dict, product: dict, rng: random.Random) -> list[tuple[Path, bool]]:
+def _pick(plan: list[dict], broad: dict, product: dict, rng: random.Random) -> list[tuple[Path, bool, str]]:
     """One variant per step; a clip is reused only when its step has no other variant left.
-    Returns (clip, keep_audio) pairs."""
-    picked: list[tuple[Path, bool]] = []
+    Returns (clip, keep_audio, step key) triples."""
+    picked: list[tuple[Path, bool, str]] = []
     for step in plan:
         options = _pool(step, broad, product)
-        used = [clip for clip, _ in picked]
+        used = [clip for clip, _, _ in picked]
         fresh = [clip for clip in options if clip not in used] or options
-        picked.append((rng.choice(fresh), bool(step.get("keep_audio"))))
+        picked.append((rng.choice(fresh), bool(step.get("keep_audio")), normalize(step["clip"])))
     return picked
+
+
+def load_captions() -> dict[str, list[str]]:
+    if not CAPTIONS_FILE.is_file():
+        return {}
+    data = json.loads(CAPTIONS_FILE.read_text(encoding="utf-8"))
+    return {
+        normalize(key): [str(text).strip() for text in texts if str(text).strip()]
+        for key, texts in data.items()
+        if not key.startswith("_") and isinstance(texts, list)
+    }
+
+
+def _pick_captions(keys: list[str], rng: random.Random) -> list[str | None]:
+    """One caption per clip; a text already shown in this video is only reused when nothing else is left."""
+    captions = load_captions()
+    shown: set[str] = set()
+    picked: list[str | None] = []
+    for key in keys:
+        options = captions.get(key) or []
+        fresh = [text for text in options if text not in shown] or options
+        text = rng.choice(fresh) if fresh else None
+        if text:
+            shown.add(text)
+        picked.append(text)
+    return picked
+
+
+def _caption_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype(str(CAPTION_FONT), size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def _wrap(text: str, font, draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        candidate = f"{current} {word}".strip()
+        if current and draw.textlength(candidate, font=font) > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _caption_png(text: str, path: Path) -> Path:
+    """Black text on a white rounded box (TikTok text style), transparent around it."""
+    font = _caption_font(CAPTION_SIZE)
+    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    lines = _wrap(text, font, probe, CAPTION_MAX_WIDTH)
+    ascent, descent = font.getmetrics() if hasattr(font, "getmetrics") else (CAPTION_SIZE, 0)
+    line_height = ascent + descent
+    gap = int(CAPTION_SIZE * 0.18)
+    pad_x, pad_y = 34, 22
+    text_width = max(int(probe.textlength(line, font=font)) for line in lines)
+    width = text_width + pad_x * 2
+    height = line_height * len(lines) + gap * (len(lines) - 1) + pad_y * 2
+
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=26, fill=(255, 255, 255, 245))
+    y = pad_y
+    for line in lines:
+        line_width = probe.textlength(line, font=font)
+        draw.text(((width - line_width) / 2, y), line, font=font, fill=(0, 0, 0, 255))
+        y += line_height + gap
+    image.save(path)
+    return path
 
 
 def plan_workflow(
@@ -150,8 +234,8 @@ def plan_workflow(
     *,
     workflow: str | None = None,
     product: str | None = None,
-) -> tuple[str, Path, list[str], list[tuple[Path, bool]]]:
-    """Returns (workflow name, product folder, branch labels, (clip, keep_audio) pairs)."""
+) -> tuple[str, Path, list[str], list[tuple[Path, bool, str]]]:
+    """Returns (workflow name, product folder, branch labels, (clip, keep_audio, step key) triples)."""
     workflows = load_workflows()
     if not workflows:
         raise EngineError("No workflow defined in workflow/workflows.json.")
@@ -212,13 +296,19 @@ def _pick_hook(rng: random.Random) -> HookPick:
     return HookPick(hook=hook, text_hook=picked_text[0] if picked_text else None, music=music)
 
 
-def _render(pick: HookPick, clips: list[tuple[Path, bool]], output: Path, rng: random.Random) -> None:
-    """Hook + muted body clips (except keep_audio) + music, with light visual variation."""
+def _render(
+    pick: HookPick,
+    clips: list[tuple[Path, bool, str]],
+    captions: list[Path | None],
+    output: Path,
+    rng: random.Random,
+) -> None:
+    """Hook + muted body clips (except keep_audio) + captions + music, with light visual variation."""
     scale_crop = (
         f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
         f"crop={WIDTH}:{HEIGHT},fps={FPS},setsar=1,format=yuv420p"
     )
-    sources = [pick.hook] + [clip for clip, _ in clips]
+    sources = [pick.hook] + [clip for clip, _, _ in clips]
     durations = [probe_duration(path) for path in sources]
     total = sum(durations)
 
@@ -241,8 +331,10 @@ def _render(pick: HookPick, clips: list[tuple[Path, bool]], output: Path, rng: r
     )
 
     video_out = "[vbase]"
+    next_input = music_index + 1
     if pick.text_hook is not None:
-        text_index = music_index + 1
+        text_index = next_input
+        next_input += 1
         args += ["-i", str(pick.text_hook)]
         ox, oy = _youry()._overlay_xy("mid")
         enable = f"lt(t,{max(0.1, durations[0]):.3f})"
@@ -257,9 +349,20 @@ def _render(pick: HookPick, clips: list[tuple[Path, bool]], output: Path, rng: r
 
     kept: list[tuple[int, float, float]] = []
     offset = durations[0]
-    for index, ((clip, keep_audio), duration) in enumerate(zip(clips, durations[1:]), start=1):
+    for index, ((clip, keep_audio, _), duration, caption) in enumerate(
+        zip(clips, durations[1:], captions), start=1
+    ):
         if keep_audio and has_audio_stream(clip):
             kept.append((index, offset, duration))
+        if caption is not None:
+            args += ["-i", str(caption)]
+            label = f"[cap{index}]"
+            filters.append(
+                f"{video_out}[{next_input}:v]overlay=x=(main_w-overlay_w)/2:y={CAPTION_Y}:"
+                f"enable='between(t,{offset:.3f},{offset + duration:.3f})'{label}"
+            )
+            video_out = label
+            next_input += 1
         offset += duration
 
     filters.append(
@@ -312,8 +415,13 @@ def render_workflow_video(
     work = out_dir / f"work_{uuid.uuid4().hex[:10]}"
     work.mkdir(parents=True, exist_ok=True)
     try:
+        texts = _pick_captions([key for _, _, key in clips], rng)
+        captions = [
+            _caption_png(text, work / f"caption_{index}.png") if text else None
+            for index, text in enumerate(texts)
+        ]
         rendered = work / "workflow.mp4"
-        _render(pick, clips, rendered, rng)
+        _render(pick, clips, captions, rendered, rng)
         duration = probe_duration(rendered)
         final = _finalize(rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature)
         text = pick.text_hook.name if pick.text_hook else "none"
@@ -326,8 +434,9 @@ def render_workflow_video(
                 f"Hook `{pick.hook.name}` · text `{text}` · music `{pick.music.name}`",
                 "Branches: " + (" → ".join(branches) or "none"),
                 "Clips: " + " · ".join(
-                    f"{i + 1}. {clip.stem}{' (sound)' if keep else ''}" for i, (clip, keep) in enumerate(clips)
+                    f"{i + 1}. {clip.stem}{' (sound)' if keep else ''}" for i, (clip, keep, _) in enumerate(clips)
                 ),
+                "Captions: " + " · ".join(f"{i + 1}. {text}" for i, text in enumerate(texts) if text),
             ],
         )
     finally:
