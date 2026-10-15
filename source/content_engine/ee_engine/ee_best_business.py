@@ -233,20 +233,6 @@ def _cover(gc, path: Path) -> Image.Image:
     return gc._load_cover_augmented(path, gc.CANVAS_W, gc.CANVAS_H, "none")
 
 
-def _take(rng: random.Random, pool: list[Path], count: int) -> list[Path]:
-    if not pool:
-        return []
-    bag = pool[:]
-    rng.shuffle(bag)
-    picked: list[Path] = []
-    while len(picked) < count:
-        if not bag:
-            bag = pool[:]
-            rng.shuffle(bag)
-        picked.append(bag.pop())
-    return picked
-
-
 def _pack_photos(gc, pack: str) -> list[Path]:
     folder = gc.PHOTOS_DIR / pack
     return gc._collect_images(folder)
@@ -271,9 +257,13 @@ def build_best_business_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
             f"No lifestyle photos in carousel/assets/photos/{LIFESTYLE_PACK}."
         )
 
+    from youry import clip_assembler as ca
+
     hook = HOOKS[rng.randrange(len(HOOKS))]
-    business_picks = _take(rng, business, 2)
-    lifestyle_picks = _take(rng, lifestyle, len(REJECTS))
+    recent = ca._load_recent()
+    business_picks = ca.draw_from_deck(rng, business, "best_business:business", 2, recent)
+    lifestyle_picks = ca.draw_from_deck(rng, lifestyle, "best_business:lifestyle", len(REJECTS), recent)
+    ca.save_recent(recent)
 
     slides_img = [
         _render_centered_lines(

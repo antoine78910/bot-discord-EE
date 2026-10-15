@@ -155,12 +155,9 @@ def _pick_photos(gc, rng: random.Random) -> list[Path | None]:
             options, history = results, "dead:results"
         else:
             options, history = groups.get(key, []), f"dead:{key}"
-        options = [p for p in options if p not in picked] or options
-        picked.append(ca._pick_fresh(rng, options, history, recent) if options else None)
-    try:
-        ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
-    except OSError:
-        pass
+        drawn = ca.draw_from_deck(rng, options, history, 1, recent, exclude=[p for p in picked if p])
+        picked.append(drawn[0] if drawn else None)
+    ca.save_recent(recent)
     return picked
 
 

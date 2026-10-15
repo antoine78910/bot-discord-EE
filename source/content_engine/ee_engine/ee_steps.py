@@ -316,18 +316,30 @@ def _bg_folder(gc, key: str) -> Path:
 
 
 def _backgrounds(gc, slides: list[dict], rng: random.Random) -> list[Image.Image]:
-    pools: dict[str, list[Path]] = {}
-    used: set[Path] = set()
+    from youry import clip_assembler as ca
+
+    # One deck draw per folder, sized to how many slides use it, so a carousel never repeats a photo.
+    needed: dict[str, int] = {}
+    for spec in slides:
+        needed[spec["bg"]] = needed.get(spec["bg"], 0) + 1
+    recent = ca._load_recent()
+    draws = {
+        key: ca.draw_from_deck(
+            rng,
+            sorted(gc._collect_images(_bg_folder(gc, key)), key=lambda path: path.name.lower()),
+            f"steps:{key}",
+            count,
+            recent,
+        )
+        for key, count in needed.items()
+    }
+    ca.save_recent(recent)
+
     frames: list[Image.Image] = []
     for spec in slides:
         key = spec["bg"]
-        if key not in pools:
-            pools[key] = sorted(gc._collect_images(_bg_folder(gc, key)), key=lambda path: path.name.lower())
-        fresh = [path for path in pools[key] if path not in used] or pools[key]
-        if fresh:
-            path = rng.choice(fresh)
-            used.add(path)
-            frames.append(_styled_bg(gc, path, key, rng))
+        if draws[key]:
+            frames.append(_styled_bg(gc, draws[key].pop(0), key, rng))
         else:
             frames.append(Image.new("RGB", (gc.CANVAS_W, gc.CANVAS_H), spec["tint"]))
     return frames

@@ -207,10 +207,50 @@ def _list_text_hooks() -> list[Path]:
     return paths
 
 
+# On Railway /data is the persistent volume: rotations survive redeploys.
 RECENT_PICKS_PATH = Path(
     os.getenv("YOURY_RECENT_PICKS_PATH", "").strip()
-    or Path(os.getenv("TMPDIR") or os.getenv("TEMP") or "/tmp") / "youry_recent_picks.json"
+    or (Path("/data") if Path("/data").is_dir() else Path(os.getenv("TMPDIR") or os.getenv("TEMP") or "/tmp"))
+    / "youry_recent_picks.json"
 )
+
+
+def save_recent(recent: dict) -> None:
+    try:
+        RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def draw_from_deck(
+    rng: random.Random, items: list, key: str, count: int, recent: dict, exclude: list | None = None
+) -> list:
+    """Shuffled-deck draw: every item comes out once, in random order, before any repeats.
+    The deck persists across runs in `recent`. `exclude` (already on screen) is skipped but
+    stays in the deck for later; it is only reused when nothing else is available."""
+    if not items or count <= 0:
+        return []
+    by_name = {_pick_name(item): item for item in items}
+    blocked = {_pick_name(item) for item in exclude or []}
+    deck = [name for name in recent.get(f"deck:{key}", []) if name in by_name]
+    picked: list[str] = []
+    while len(picked) < count:
+        avoid = blocked | set(picked)
+        candidates = [i for i, name in enumerate(deck) if name not in avoid]
+        if not candidates:
+            refill = [name for name in by_name if name not in deck and name not in avoid]
+            if refill:
+                rng.shuffle(refill)
+                deck = refill + deck
+                continue
+            # This carousel already shows the whole pool: a repeat is unavoidable.
+            candidates = [i for i, name in enumerate(deck) if name not in picked]
+            if not candidates:
+                picked.append(rng.choice([name for name in by_name if name not in picked] or list(by_name)))
+                continue
+        picked.append(deck.pop(candidates[-1]))
+    recent[f"deck:{key}"] = deck
+    return [by_name[name] for name in picked]
 
 
 def _load_recent() -> dict:

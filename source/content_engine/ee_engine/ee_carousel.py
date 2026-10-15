@@ -202,15 +202,16 @@ def build_ee_carousel(
     work.mkdir(parents=True, exist_ok=True)
     rendered: list[Image.Image] = []
 
+    from youry import clip_assembler as ca
+
+    recent = ca._load_recent()
+    avatar_path = ca.draw_from_deck(rng, avatars, f"ee:avatar:{pack}", 1, recent)[0]
+    pool = ca.draw_from_deck(rng, photos, f"ee:photos:{pack}", len(STEP_SLIDES), recent)
+    ca.save_recent(recent)
+
     hook_lines = gc._pick_caption_set("hooks")
-    avatar_path = rng.choice(avatars)
     avatar_bg = gc._load_cover_augmented(avatar_path, gc.CANVAS_W, gc.CANVAS_H, "none")
     rendered.append(gc.render_slide_with_text(avatar_bg, hook_lines, style, font_boost=FONT_BOOST))
-
-    pool = photos[:]
-    rng.shuffle(pool)
-    while len(pool) < len(STEP_SLIDES):
-        pool.extend(photos)
 
     for (section, logo_folder), photo in zip(STEP_SLIDES, pool):
         lines = gc._pick_caption_set(section)
