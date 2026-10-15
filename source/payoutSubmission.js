@@ -21,6 +21,7 @@ const {
     ChannelType,
     EmbedBuilder,
     MessageFlags,
+    OverwriteType,
     PermissionFlagsBits,
 } = require('discord.js');
 const { sameMessage } = require('./discordSync');
@@ -164,14 +165,17 @@ async function ticketOverwrites(guild, openerId) {
     ];
     const me = guild.members.me || (await guild.members.fetchMe());
     const overwrites = [
-        { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: me.id, allow: [...access, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
+        { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
+        {
+            id: me.id,
+            type: OverwriteType.Member,
+            allow: [...access, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages],
+        },
     ];
-    if (openerId && openerId !== me.id) overwrites.push({ id: openerId, allow: access });
+    if (openerId && openerId !== me.id) overwrites.push({ id: openerId, type: OverwriteType.Member, allow: access });
     for (const ownerId of new Set([guild.ownerId, ...OWNER_IDS])) {
         if (!ownerId || ownerId === openerId || ownerId === me.id) continue;
-        const owner = await guild.members.fetch(ownerId).catch(() => null);
-        if (owner) overwrites.push({ id: owner.id, allow: [...access, PermissionFlagsBits.ManageMessages] });
+        overwrites.push({ id: ownerId, type: OverwriteType.Member, allow: [...access, PermissionFlagsBits.ManageMessages] });
     }
     return overwrites;
 }
@@ -180,7 +184,7 @@ async function ticketOverwrites(guild, openerId) {
 async function lockOpenTickets(guild) {
     const channels = await guild.channels.fetch().catch(() => guild.channels.cache);
     let locked = 0;
-    for (const channel of channels.values()) {
+    for (const channel of [...channels.values()]) {
         if (!isTicketChannel(channel)) continue;
         const openerId = ticketOpenerId(channel);
         const roles = channel.permissionOverwrites.cache
