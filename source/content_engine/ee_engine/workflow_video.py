@@ -63,7 +63,7 @@ CAPTION_EMOJI_GAP = 2
 # Same placement as the YouRy text hooks ("mid"): upper third, clear of the TikTok/Reels UI.
 CAPTION_Y = "(main_h-overlay_h)*0.24"
 # Browser recordings with the URL bar in the upper third: caption goes above it.
-CAPTION_Y_BY_STEP = {"tiktok": "main_h*0.04", "mademebuyit": "main_h*0.04"}
+CAPTION_Y_BY_STEP = {"tiktok": "main_h*0.04", "mademebuyit": "main_h*0.04", "tiktok show": "main_h*0.1"}
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
