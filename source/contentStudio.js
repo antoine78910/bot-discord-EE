@@ -235,6 +235,21 @@ function linkRow(links) {
     );
 }
 
+/** Joins lines under Discord's 2000-character message limit, dropping the overflow. */
+function fitContent(lines) {
+    const kept = [];
+    let length = 0;
+    for (const line of lines) {
+        if (length + line.length + 1 > 1950) {
+            kept.push('…');
+            break;
+        }
+        kept.push(line);
+        length += line.length + 1;
+    }
+    return kept.join('\n');
+}
+
 /** `send` posts one message (interaction.followUp, thread.send, ...). */
 async function deliverVideos(send, result, prefix = '') {
     const items = result.items || [];
@@ -244,7 +259,7 @@ async function deliverVideos(send, result, prefix = '') {
         if (isHostingEnabled()) {
             const hosted = await publishFiles([item.path], `${label} ${index + 1}/${items.length}`);
             await send({
-                content: [header, ...(item.details || []), '⬇️ Download from the link below (full quality, do not re-download from Discord).'].join('\n'),
+                content: fitContent([header, '⬇️ Download from the link below (full quality, do not re-download from Discord).', ...(item.details || [])]),
                 components: [
                     linkRow([
                         { label: 'Download video', url: hosted.files[0].download },
@@ -255,7 +270,7 @@ async function deliverVideos(send, result, prefix = '') {
             continue;
         }
         await send({
-            content: [header, ...(item.details || [])].join('\n'),
+            content: fitContent([header, ...(item.details || [])]),
             files: [new AttachmentBuilder(item.path, { name: path.basename(item.path) })],
         });
     }

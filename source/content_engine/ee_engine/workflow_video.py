@@ -59,6 +59,7 @@ CAPTION_SIZE = 74
 CAPTION_STROKE = 5
 CAPTION_MAX_WIDTH = 900
 CAPTION_LINE_PITCH = 97
+CAPTION_EMOJI_GAP = 2
 # Same placement as the YouRy text hooks ("mid"): upper third, clear of the TikTok/Reels UI.
 CAPTION_Y = "(main_h-overlay_h)*0.24"
 
@@ -124,7 +125,7 @@ def _pool(step: dict, broad: dict, product: dict) -> list[Path]:
 
 
 def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
-          path: list[str], plan: list[dict], missing: list[str]) -> None:
+          path: list[str], plan: list[dict], missing: list[str], skipped: list[str]) -> None:
     """Resolve random choices into a flat list of clip steps."""
     for node in nodes:
         if "one_of" in node:
@@ -133,16 +134,20 @@ def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
             branch = rng.choices(branches, weights=weights, k=1)[0]
             if branch.get("label"):
                 path.append(branch["label"])
-            _walk(branch["steps"], broad, product, rng, path, plan, missing)
+            _walk(branch["steps"], broad, product, rng, path, plan, missing, skipped)
         elif "chance" in node:
             if rng.random() < node["chance"]:
                 if node.get("label"):
                     path.append(node["label"])
-                _walk(node["steps"], broad, product, rng, path, plan, missing)
+                _walk(node["steps"], broad, product, rng, path, plan, missing, skipped)
+            elif node.get("label"):
+                skipped.append(f'{node["label"]} (random skip)')
         else:
             if _pool(node, broad, product):
                 plan.append(node)
-            elif not node.get("optional"):
+            elif node.get("optional"):
+                skipped.append(f'{node["clip"]} (no clip)')
+            else:
                 missing.append(f'{node.get("from", "broad")}:{node["clip"]}')
 
 
@@ -194,7 +199,14 @@ def _caption_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 def _wrap(text: str, font, draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
     lines: list[str] = []
     current = ""
+    words: list[str] = []
     for word in text.split():
+        # An emoji stays on the line of the word before it.
+        if words and not any(ch.isalnum() for ch in word):
+            words[-1] += f" {word}"
+        else:
+            words.append(word)
+    for word in words:
         candidate = f"{current} {word}".strip()
         if current and draw.textlength(candidate, font=font) > max_width:
             lines.append(current)
@@ -217,17 +229,38 @@ def _caption_png(text: str, path: Path) -> Path:
     image = Image.new("RGBA", (WIDTH, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     for row, line in enumerate(lines):
-        draw.text(
-            (WIDTH / 2, pad + CAPTION_LINE_PITCH * row + CAPTION_LINE_PITCH / 2),
-            line,
-            font=font,
-            anchor="mm",
-            fill=(255, 255, 255, 255),
-            stroke_width=CAPTION_STROKE,
-            stroke_fill=(0, 0, 0, 255),
-        )
+        _draw_caption_line(image, draw, line, font, pad + CAPTION_LINE_PITCH * row + CAPTION_LINE_PITCH / 2)
     image.save(path)
     return path
+
+
+def _draw_caption_line(image: Image.Image, draw: ImageDraw.ImageDraw, line: str, font, center_y: float) -> None:
+    """Outlined text centered on center_y; emojis are pasted as Apple PNGs like on the carousels."""
+    from carousel import generate_carousel as gc
+
+    emoji_size = CAPTION_SIZE
+    runs = []
+    for part, is_emoji in gc._split_text_runs(line):
+        emoji = gc._load_apple_emoji(part, emoji_size) if is_emoji else None
+        if is_emoji and emoji is None:
+            continue
+        width = emoji.size[0] + CAPTION_EMOJI_GAP if emoji is not None else draw.textlength(part, font=font)
+        runs.append((part, emoji, width))
+    x = (WIDTH - sum(width for _, _, width in runs)) / 2
+    for part, emoji, width in runs:
+        if emoji is not None:
+            image.paste(emoji, (int(x + CAPTION_EMOJI_GAP), int(center_y - emoji.size[1] / 2)), emoji)
+        else:
+            draw.text(
+                (x, center_y),
+                part,
+                font=font,
+                anchor="lm",
+                fill=(255, 255, 255, 255),
+                stroke_width=CAPTION_STROKE,
+                stroke_fill=(0, 0, 0, 255),
+            )
+        x += width
 
 
 def plan_workflow(
@@ -235,8 +268,8 @@ def plan_workflow(
     *,
     workflow: str | None = None,
     product: str | None = None,
-) -> tuple[str, Path, list[str], list[tuple[Path, bool, str]]]:
-    """Returns (workflow name, product folder, branch labels, (clip, keep_audio, step key) triples)."""
+) -> tuple[str, Path, list[str], list[tuple[Path, bool, str]], list[str]]:
+    """Returns (workflow name, product folder, branch labels, (clip, keep_audio, step key) triples, skipped steps)."""
     workflows = load_workflows()
     if not workflows:
         raise EngineError("No workflow defined in workflow/workflows.json.")
@@ -255,9 +288,10 @@ def plan_workflow(
         path: list[str] = []
         plan: list[dict] = []
         missing: list[str] = []
-        _walk(workflows[name], broad, product_clips, rng, path, plan, missing)
+        skipped: list[str] = []
+        _walk(workflows[name], broad, product_clips, rng, path, plan, missing, skipped)
         if not missing:
-            return name, folder, path, _pick(plan, broad, product_clips, rng)
+            return name, folder, path, _pick(plan, broad, product_clips, rng), skipped
         key = f"{folder.name}: missing {', '.join(missing)}"
         problems[key] = problems.get(key, 0) + 1
     detail = "; ".join(sorted(problems, key=problems.get, reverse=True)[:3])
@@ -412,7 +446,7 @@ def render_workflow_video(
     iphone_signature: bool = True,
 ) -> VideoResult:
     rng = random.Random(seed)
-    name, folder, branches, clips = plan_workflow(rng, workflow=workflow, product=product)
+    name, folder, branches, clips, skipped = plan_workflow(rng, workflow=workflow, product=product)
     pick = _pick_hook(rng)
 
     work = out_dir / f"work_{uuid.uuid4().hex[:10]}"
@@ -427,19 +461,24 @@ def render_workflow_video(
         _render(pick, clips, captions, rendered, rng)
         duration = probe_duration(rendered)
         final = _finalize(rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature)
-        text = pick.text_hook.name if pick.text_hook else "none"
+        text = pick.text_hook.stem if pick.text_hook else "none"
+        scenes = [f"`0` hook · {pick.hook.stem} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
+        for i, ((clip, keep, key), caption) in enumerate(zip(clips, texts), start=1):
+            sound = " 🔊" if keep else ""
+            scenes.append(
+                f"`{i}` **{key}** · {clip.stem}{sound} · {probe_duration(clip):.1f}s"
+                + (f" · “{caption}”" if caption else " · no caption")
+            )
         return VideoResult(
             kind="workflow",
             path=final,
             duration=duration,
             details=[
-                f"**Workflow:** {name} · **Product:** {folder.name}",
-                f"Hook `{pick.hook.name}` · text `{text}` · music `{pick.music.name}`",
+                f"**Workflow:** {name} · **Product:** {folder.name} · **Music:** {pick.music.stem}",
                 "Branches: " + (" → ".join(branches) or "none"),
-                "Clips: " + " · ".join(
-                    f"{i + 1}. {clip.stem}{' (sound)' if keep else ''}" for i, (clip, keep, _) in enumerate(clips)
-                ),
-                "Captions: " + " · ".join(f"{i + 1}. {text}" for i, text in enumerate(texts) if text),
+                f"**Scenes ({len(clips) + 1}):**",
+                *scenes,
+                *(["Skipped: " + " · ".join(skipped)] if skipped else []),
             ],
         )
     finally:

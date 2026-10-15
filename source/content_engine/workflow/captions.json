@@ -18,30 +18,30 @@
   ],
 
   "ecomefficiency": [
-    "I get all my tools from Ecom Efficiency",
-    "All the premium ecom tools in one place",
-    "Every tool I use is on Ecom Efficiency"
+    "Go to this site",
+    "Go to Ecom Efficiency",
+    "Get over to this site"
   ],
   "show kalodata": [
-    "Find a winning product on Kalodata",
-    "Open Kalodata for product research",
-    "Start with Kalodata to find winners"
+    "Choose Kalodata",
+    "Choose this tool",
+    "Click on Kalodata"
   ],
   "product kalodata": [
-    "Sort by revenue to find the best sellers",
-    "Filter the products making the most sales",
-    "Look for products with exploding sales"
+    "Go to product",
+    "Get over to product",
+    "Click on product"
   ],
   "kalodata show product": [
     "This one is making thousands per day",
     "Found a winner with crazy sales",
-    "Pick a product that's already selling"
+    "Pick a product that's already selling",
+    "Filter by top sales and choose among these products"
   ],
 
   "aliexpress": [
-    "Find the same product on AliExpress",
-    "Source it on AliExpress for a few dollars",
-    "Grab the supplier on AliExpress"
+    "Find the supplier on AliExpress",
+    "Find the same product on AliExpress"
   ],
   "aliexpress link": [
     "Copy the AliExpress product link",
@@ -50,19 +50,16 @@
   ],
 
   "show dropmagic": [
-    "Now build your store with Dropmagic",
-    "Open Dropmagic to build the store",
-    "Build the whole store with AI on Dropmagic"
+    "Now open Dropmagic",
+    "Then choose Dropmagic"
   ],
   "new store": [
-    "Create a new store and paste the link",
-    "Paste the link to create a new store",
-    "Start a new store from the product link"
+    "Create a new store",
+    "Click on new store"
   ],
   "loading dropmagic": [
-    "AI builds the whole Shopify store",
-    "Wait a few seconds while AI builds it",
-    "The AI does all the work for you"
+    "Paste your link and let AI cook",
+    "Put your AliExpress link and generate"
   ],
   "shop": [
     "Your store is ready in seconds",
@@ -73,10 +70,13 @@
   "show youry": [
     "Now create your ads with Youry",
     "Open Youry to make the ads",
-    "Time to make the ads with Youry"
+    "Time to make the ads with Youry",
+    "Now go to Youry",
+    "Now choose this tool"
   ],
 
   "show lta": [
+    "Choose Link to Ad",
     "Use Link to Ad",
     "Open Link to Ad",
     "Go to Link to Ad"
@@ -113,14 +113,15 @@
   ],
 
   "workflow": [
+    "Choose workflow",
     "Use a workflow for static ads",
     "Open the static ads workflow",
     "Create static ads with a workflow"
   ],
   "static ads": [
-    "Pick the ad styles you want",
-    "Choose your static ad templates",
-    "Select the formats you like"
+    "Pick the static ad templates",
+    "Pick this template",
+    "Pick this pre-made template"
   ],
   "input workflow": [
     "Add your product image",
@@ -135,12 +136,15 @@
   "ads": [
     "Ready-to-run ads in minutes",
     "Here are your ads",
-    "Scroll-stopping ads, done in minutes"
+    "Scroll-stopping ads, done in minutes",
+    "20 winning ads ready to sell",
+    "Get 20 proven ads for your product in minutes"
   ],
   "meta": [
     "Launch them on Meta Ads",
     "Upload them to Meta Ads",
-    "Run the ads on Facebook and Instagram"
+    "Run the ads on Facebook and Instagram",
+    "Create a Meta campaign and upload them"
   ],
   "katching": [
     "Ka-ching! First sales",
@@ -151,6 +155,8 @@
   "result": [
     "And the sales start coming in",
     "Then watch the orders come in",
-    "This is the result"
+    "This is the result",
+    "Thank me later 🤑",
+    "You can thank me later 🤑"
   ]
 }
