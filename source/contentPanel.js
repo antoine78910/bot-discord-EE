@@ -30,6 +30,8 @@ const PANEL_CHANNEL_ID = process.env.CONTENT_PANEL_CHANNEL_ID || '15561654191848
 // Every content thread includes the reviewer, who is pinged in the info channel after each delivery.
 const INFO_CHANNEL_ID = process.env.CONTENT_INFO_CHANNEL_ID || '1556165339413352518';
 const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
+const CREATOR_ROLE_ID = process.env.CREATOR_ROLE_ID || '1560108191142903868';
+const NOT_ALLOWED = 'Content generation is for staff and registered creators. Register in the apply channel first.';
 const PANEL_COLOR = 0x8b5cf6;
 const PROGRESS_COLOR = 0x5865f2;
 const DONE_COLOR = 0x57f287;
@@ -233,9 +235,16 @@ async function getDeliveryTarget(channel, member) {
     }
 }
 
+function canGenerate(interaction) {
+    if (isStaff(interaction)) return true;
+    const roles = interaction.member?.roles;
+    if (roles?.cache) return roles.cache.has(CREATOR_ROLE_ID);
+    return Array.isArray(roles) && roles.includes(CREATOR_ROLE_ID);
+}
+
 async function startJob(interaction, kind, count) {
-    if (!isStaff(interaction)) {
-        await interaction.reply({ content: 'Content generation is reserved for staff.', flags: MessageFlags.Ephemeral });
+    if (!canGenerate(interaction)) {
+        await interaction.reply({ content: NOT_ALLOWED, flags: MessageFlags.Ephemeral });
         return;
     }
     const channel = interaction.channel;
@@ -310,8 +319,8 @@ async function startJob(interaction, kind, count) {
 /** Returns true when the interaction belonged to the panel. */
 async function handlePanelInteraction(interaction) {
     if (interaction.isButton() && interaction.customId === IDS.open) {
-        if (!isStaff(interaction)) {
-            await interaction.reply({ content: 'Content generation is reserved for staff.', flags: MessageFlags.Ephemeral });
+        if (!canGenerate(interaction)) {
+            await interaction.reply({ content: NOT_ALLOWED, flags: MessageFlags.Ephemeral });
             return true;
         }
         await interaction.reply({

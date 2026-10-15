@@ -34,6 +34,7 @@ desktop.ini
 source/data/tickets-history.json
 source/data/server-knowledge.md
 source/data/server-knowledge.meta.json
+source/data/creator-registrations.json
 
 # Content engine (Python)
 __pycache__/

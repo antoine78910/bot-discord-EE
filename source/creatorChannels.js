@@ -10,6 +10,8 @@
  *   CREATOR_REGISTRATION_LOG_CHANNEL_ID   where registrations are posted (default: info channel)
  *   CREATOR_PAY_RATE / CREATOR_MIN_VIEWS / CREATOR_MIN_T1   payout terms shown in #start-here and #payouts
  */
+const fs = require('fs');
+const path = require('path');
 const {
     ActionRowBuilder,
     ButtonBuilder,
@@ -18,6 +20,8 @@ const {
     EmbedBuilder,
     MessageFlags,
     ModalBuilder,
+    PermissionFlagsBits,
+    SlashCommandBuilder,
     TextInputBuilder,
     TextInputStyle,
 } = require('discord.js');
@@ -28,6 +32,8 @@ const BRAND = 'ECOM EFFICIENCY CREATORS';
 const TOOLS = 'https://app.ecomefficiency.com/tools';
 const ZORCHA = 'https://zorcha.com/';
 const DM_SETUP_VIDEO = 'https://player.mediadelivery.net/play/776484/e2aa021a-927d-4727-abb0-dc95b4935b04';
+const CREATOR_ROLE_ID = process.env.CREATOR_ROLE_ID || '1560108191142903868';
+const PROFILE_PICTURES = 'https://drive.google.com/drive/folders/1WmSu-KKf1oPrnhrj3AKlt4Ai-RksM8XZ?usp=sharing';
 const DM_LINK = 'https://docs.google.com/document/d/1h4iUz5icf6Vp1w96mH3bAW7eRBifaOQfahFfwyCMOiU/edit?usp=drive_link';
 const REGISTRATION_LOG_CHANNEL_ID =
     process.env.CREATOR_REGISTRATION_LOG_CHANNEL_ID || process.env.CONTENT_INFO_CHANNEL_ID || '1556165339413352518';
@@ -43,7 +49,27 @@ const PINNED_IDS = (() => {
     }
 })();
 
-const IDS = { register: 'ee_creator_register', modal: 'ee_creator_register_modal' };
+const IDS = {
+    register: 'ee_creator_register',
+    modal: 'ee_creator_register_modal',
+    approve: 'ee_creator_approve',
+    reject: 'ee_creator_reject',
+};
+const USERNAME_COMMAND = 'username';
+// /data is the Railway volume; the container filesystem is wiped on every deploy.
+const STORE_PATH =
+    process.env.CREATOR_STORE_PATH ||
+    (fs.existsSync('/data') ? '/data/creator-registrations.json' : path.join(__dirname, 'data', 'creator-registrations.json'));
+const STAFF_ROLE_IDS = [
+    process.env.STAFF_ROLE_ID,
+    process.env.TICKET_STAFF_ROLE_ID,
+    ...String(process.env.CONTENT_STAFF_ROLE_IDS || '').split(','),
+]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+
+let registrations = new Map();
+let storeLoaded = false;
 
 /** key -> { name used when creating, match = substring that identifies an existing channel } */
 const CHANNELS = {
@@ -129,8 +155,8 @@ function templates(link) {
                     '• looking for my next winning product 👀',
                     '',
                     "**Profile picture** — ***Don't add a profile picture until you've started your warm-up videos.***",
-                    "Use a **natural photo of your face**. The account should look like a real person's, not a brand or an ad.",
-                    'Avoid Ecom Efficiency logos, stock photos, AI-generated photos and promotional visuals.',
+                    `Pick **one** profile picture from this folder: ${PROFILE_PICTURES}`,
+                    "The account should look like a real person's, not a brand or an ad. Avoid Ecom Efficiency logos and promotional visuals.",
                     '',
                     '**⏰ Posting time:** post at US peak time, between **6pm and 12am ET**. Based in Asia? Post in your morning, the earlier the better.',
                     '',
@@ -283,7 +309,7 @@ function templates(link) {
                     '• Payout method (PayPal / Crypto / Bank Transfer)',
                     '• Payout details',
                     '',
-                    "Once you register, you're officially in the program — warm up, post, and start earning.",
+                    "Once you register, the team reviews the notification. After approval you're in the program — warm up, post, and start earning.",
                 ].join('\n')
             ),
         ],
@@ -391,40 +417,385 @@ function registrationModal() {
         );
 }
 
-async function submitRegistration(interaction) {
-    const value = (id) => interaction.fields.getTextInputValue(id) || '—';
-    const log = new EmbedBuilder()
-        .setColor(COLOR)
-        .setTitle('New register')
-        .setDescription(`**Discord:** ${interaction.user} (\`${interaction.user.id}\`)`)
+function clip(value, max = 1000) {
+    const text = String(value || '').trim();
+    if (!text || text === '—') return '—';
+    return text.slice(0, max);
+}
+
+function handleOf(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, '')
+        .replace(/\s+/g, '');
+}
+
+function loadStore() {
+    if (storeLoaded) return;
+    storeLoaded = true;
+    try {
+        const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+        const list = Array.isArray(raw.registrations) ? raw.registrations : [];
+        registrations = new Map(list.filter((row) => row?.discordId).map((row) => [String(row.discordId), row]));
+    } catch {
+        registrations = new Map();
+    }
+}
+
+function saveStore() {
+    fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
+    fs.writeFileSync(STORE_PATH, JSON.stringify({ registrations: [...registrations.values()] }, null, 2));
+}
+
+function canReview(interaction) {
+    const member = interaction.member;
+    if (!member) return false;
+    if (REVIEWER_ID && interaction.user?.id === REVIEWER_ID) return true;
+    if (member.permissions?.has?.(PermissionFlagsBits.Administrator)) return true;
+    const roles = member.roles?.cache ? [...member.roles.cache.keys()] : [];
+    return roles.some((roleId) => STAFF_ROLE_IDS.includes(roleId));
+}
+
+function statusLabel(status) {
+    if (status === 'approved') return 'Approved';
+    if (status === 'rejected') return 'Rejected';
+    return 'Pending review';
+}
+
+function registrationEmbed(record) {
+    const status = record.status === 'approved' ? 'approved' : record.status === 'rejected' ? 'rejected' : 'pending';
+    const color = status === 'approved' ? 0x22c55e : status === 'rejected' ? 0xef4444 : COLOR;
+    const title =
+        status === 'approved' ? 'Creator application — approved' : status === 'rejected' ? 'Creator application — rejected' : 'New register';
+    const who = record.discordUsername ? ` · @${record.discordUsername}` : '';
+    return new EmbedBuilder()
+        .setColor(color)
+        .setTitle(title)
+        .setDescription(`**Discord:** <@${record.discordId}> (\`${record.discordId}\`)${who}`)
         .addFields(
-            { name: 'TikTok Username', value: value('tiktok') },
-            { name: 'Instagram Username', value: value('instagram') },
-            { name: 'Phone Number', value: value('phone') },
-            { name: 'Payout Method', value: value('method') },
-            { name: 'Payout Details', value: value('details') }
+            { name: 'Discord Username', value: clip(record.discordUsername ? `@${record.discordUsername}` : '—', 100) },
+            { name: 'TikTok Username', value: clip(record.tiktok, 100) },
+            { name: 'Instagram Username', value: clip(record.instagram, 100) },
+            { name: 'Phone Number', value: clip(record.phone, 40) },
+            { name: 'Payout Method', value: clip(record.payoutMethod, 100) },
+            { name: 'Payout Details', value: clip(record.payoutDetails, 1000) },
+            { name: 'Status', value: statusLabel(status) },
+            ...(record.validatedBy?.username
+                ? [{ name: 'Validated by', value: clip(`@${record.validatedBy.username} (\`${record.validatedBy.id}\`)`, 200) }]
+                : [])
         )
         .setFooter({ text: 'Ecom Efficiency Creator Registration' })
-        .setTimestamp();
+        .setTimestamp(record.appliedAt ? new Date(record.appliedAt) : new Date());
+}
+
+function reviewRow(discordId) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`${IDS.approve}:${discordId}`)
+            .setLabel('Validate')
+            .setEmoji('✅')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`${IDS.reject}:${discordId}`).setLabel('Reject').setEmoji('✖️').setStyle(ButtonStyle.Danger)
+    );
+}
+
+function fieldMap(embed) {
+    return Object.fromEntries((embed?.fields || []).map((field) => [field.name, String(field.value || '')]));
+}
+
+function recordFromMessage(message) {
+    const embed = message.embeds?.[0];
+    const title = embed?.title || '';
+    if (!/register|creator application/i.test(title)) return null;
+    if (/replaced/i.test(title)) return null;
+    const fields = fieldMap(embed);
+    if (!fields['TikTok Username'] && !fields['Instagram Username']) return null;
+    const description = embed.description || '';
+    const discordId = (description.match(/<@!?(\d+)>/) || [])[1];
+    if (!discordId) return null;
+    const fromDescription = (description.match(/· @(\S+)/) || [])[1] || '';
+    const fromField = String(fields['Discord Username'] || '').replace(/^@/, '').split(/\s/)[0] || '';
+    let status = 'pending';
+    if (/approved/i.test(fields.Status || '') || /approved/i.test(title)) status = 'approved';
+    else if (/rejected/i.test(fields.Status || '') || /rejected/i.test(title)) status = 'rejected';
+    const validator = String(fields['Validated by'] || '');
+    const validatorId = (validator.match(/`(\d+)`/) || [])[1] || '';
+    const validatorName = (validator.match(/@(\S+)/) || [])[1] || '';
+    return {
+        discordId,
+        discordUsername: fromField || fromDescription,
+        discordGlobalName: '',
+        tiktok: fields['TikTok Username'] || '—',
+        instagram: fields['Instagram Username'] || '—',
+        phone: fields['Phone Number'] || '—',
+        payoutMethod: fields['Payout Method'] || '—',
+        payoutDetails: fields['Payout Details'] || '—',
+        status,
+        appliedAt: message.createdAt?.toISOString?.() || new Date().toISOString(),
+        validatedAt: status === 'pending' ? null : message.editedAt?.toISOString?.() || null,
+        validatedBy: validatorId ? { id: validatorId, username: validatorName } : null,
+        messageId: message.id,
+        channelId: message.channelId,
+    };
+}
+
+function lookupEmbed(record) {
+    return new EmbedBuilder()
+        .setColor(record.status === 'approved' ? 0x22c55e : record.status === 'rejected' ? 0xef4444 : COLOR)
+        .setTitle(`@${record.discordUsername || record.discordId}`)
+        .setDescription(`**Status:** ${statusLabel(record.status)}\n**Discord:** <@${record.discordId}> (\`${record.discordId}\`)`)
+        .addFields(
+            { name: 'TikTok', value: clip(record.tiktok, 100), inline: true },
+            { name: 'Instagram', value: clip(record.instagram, 100), inline: true },
+            { name: 'Phone', value: clip(record.phone, 40), inline: true },
+            { name: 'Payout method', value: clip(record.payoutMethod, 100) },
+            { name: 'Payout details', value: clip(record.payoutDetails, 1000) },
+            {
+                name: 'Review',
+                value: clip(
+                    [
+                        record.appliedAt ? `Applied ${record.appliedAt}` : '',
+                        record.validatedAt ? `Updated ${record.validatedAt}` : '',
+                        record.validatedBy?.username ? `By @${record.validatedBy.username}` : '',
+                    ]
+                        .filter(Boolean)
+                        .join('\n') || '—',
+                    300
+                ),
+            }
+        )
+        .setFooter({ text: 'Stored for future payouts' });
+}
+
+function findRegistrations(query) {
+    loadStore();
+    const needle = handleOf(query);
+    if (!needle) return [];
+    const exact = [];
+    const partial = [];
+    for (const record of registrations.values()) {
+        const keys = [record.discordId, record.discordUsername, record.discordGlobalName, record.tiktok, record.instagram]
+            .map(handleOf)
+            .filter((key) => key && key !== '—');
+        if (keys.includes(needle)) exact.push(record);
+        else if (needle.length >= 3 && keys.some((key) => key.includes(needle))) partial.push(record);
+    }
+    return exact.length ? exact : partial;
+}
+
+async function fillDiscordName(client, record) {
+    if (record.discordUsername) return record;
+    const user = await client.users.fetch(record.discordId).catch(() => null);
+    if (!user) return record;
+    record.discordUsername = user.username || '';
+    record.discordGlobalName = user.globalName || '';
+    return record;
+}
+
+async function syncRegistrationLog(client) {
+    loadStore();
+    const channel = await client.channels.fetch(REGISTRATION_LOG_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased?.() || !channel.messages?.fetch) return;
+
+    const messages = [];
+    let before;
+    for (let page = 0; page < 10; page += 1) {
+        const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+        if (!batch?.size) break;
+        messages.push(...batch.values());
+        before = batch.last()?.id;
+        if (batch.size < 100) break;
+    }
+    messages.sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
+
+    const latest = new Map();
+    for (const message of messages) {
+        if (message.author?.id !== client.user?.id) continue;
+        const parsed = recordFromMessage(message);
+        if (!parsed) continue;
+        const existing = registrations.get(parsed.discordId) || {};
+        registrations.set(parsed.discordId, {
+            ...existing,
+            ...parsed,
+            discordUsername: parsed.discordUsername || existing.discordUsername || '',
+            discordGlobalName: existing.discordGlobalName || '',
+            validatedBy: parsed.validatedBy || (parsed.status === 'pending' ? null : existing.validatedBy || null),
+            validatedAt: parsed.status === 'pending' ? null : parsed.validatedAt || existing.validatedAt || null,
+        });
+        latest.set(parsed.discordId, message);
+    }
+
+    let fetched = 0;
+    for (const record of registrations.values()) {
+        if (record.discordUsername || fetched >= 40) continue;
+        await fillDiscordName(client, record);
+        fetched += 1;
+    }
+    saveStore();
+
+    for (const [discordId, message] of latest) {
+        const record = registrations.get(discordId);
+        if (!record || record.status !== 'pending' || record.messageId !== message.id) continue;
+        const hasButtons = message.components?.some((row) =>
+            row.components?.some((component) =>
+                String(component.customId || component.custom_id || '').startsWith(`${IDS.approve}:`)
+            )
+        );
+        if (hasButtons) continue;
+        await message
+            .edit({ embeds: [registrationEmbed(record)], components: [reviewRow(discordId)] })
+            .catch((error) => console.warn('[CREATOR] Could not add validate buttons:', error?.message || error));
+    }
+    console.log(`[CREATOR] ${registrations.size} registration(s) stored for /${USERNAME_COMMAND}`);
+}
+
+async function grantCreatorRole(interaction) {
+    if (!CREATOR_ROLE_ID || !interaction.guild) return false;
+    const member = interaction.member?.roles?.add
+        ? interaction.member
+        : await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) return false;
+    if (member.roles.cache?.has(CREATOR_ROLE_ID)) return true;
+    try {
+        await member.roles.add(CREATOR_ROLE_ID, 'Creator application submitted');
+        return true;
+    } catch (error) {
+        console.warn(`[CREATOR] Could not grant creator role to ${interaction.user.tag}:`, error?.message || error);
+        return false;
+    }
+}
+
+async function submitRegistration(interaction) {
+    const value = (id) => clip(interaction.fields.getTextInputValue(id));
+    const record = {
+        discordId: interaction.user.id,
+        discordUsername: interaction.user.username || '',
+        discordGlobalName: interaction.user.globalName || '',
+        tiktok: value('tiktok'),
+        instagram: value('instagram'),
+        phone: value('phone'),
+        payoutMethod: value('method'),
+        payoutDetails: value('details'),
+        status: 'pending',
+        appliedAt: new Date().toISOString(),
+        validatedAt: null,
+        validatedBy: null,
+        messageId: '',
+        channelId: REGISTRATION_LOG_CHANNEL_ID,
+    };
+    loadStore();
+    const previous = registrations.get(record.discordId);
+    registrations.set(record.discordId, record);
+    saveStore();
+
+    const roleGranted = await grantCreatorRole(interaction);
+
     const channel = await interaction.client.channels.fetch(REGISTRATION_LOG_CHANNEL_ID).catch(() => null);
+    if (previous?.messageId && previous.status === 'pending' && channel?.messages?.fetch) {
+        const previousMessage = await channel.messages.fetch(previous.messageId).catch(() => null);
+        if (previousMessage) {
+            const replaced = registrationEmbed({ ...previous, status: 'pending', validatedBy: null })
+                .setColor(0x6b7280)
+                .setTitle('Creator application — replaced')
+                .spliceFields(6, 1, { name: 'Status', value: 'Replaced by a newer application' });
+            await previousMessage.edit({ embeds: [replaced], components: [] }).catch(() => {});
+        }
+    }
     if (channel?.isTextBased?.()) {
-        await channel
+        const sent = await channel
             .send({
                 content: REVIEWER_ID ? `<@${REVIEWER_ID}>` : undefined,
-                embeds: [log],
+                embeds: [registrationEmbed(record)],
+                components: [reviewRow(record.discordId)],
                 allowedMentions: { users: REVIEWER_ID ? [REVIEWER_ID] : [] },
             })
-            .catch((error) => console.warn('[CREATOR] Registration log failed:', error?.message || error));
+            .catch((error) => {
+                console.warn('[CREATOR] Registration log failed:', error?.message || error);
+                return null;
+            });
+        if (sent) {
+            record.messageId = sent.id;
+            registrations.set(record.discordId, record);
+            saveStore();
+        }
     }
     await interaction.reply({
         embeds: [
             new EmbedBuilder()
                 .setColor(COLOR)
-                .setTitle('✅ Registration complete')
-                .setDescription("You're officially in the **Ecom Efficiency** Creator Program."),
+                .setTitle('Application received')
+                .setDescription(
+                    roleGranted
+                        ? 'Thanks — you now have access to the content generator. The team will review your application and DM you once it’s validated.'
+                        : 'Thanks — the team will review it from the notification. You’ll get a DM once it’s validated.'
+                ),
         ],
         flags: MessageFlags.Ephemeral,
     });
+}
+
+async function reviewRegistration(interaction, status) {
+    if (!canReview(interaction)) {
+        await interaction.reply({ content: 'Only staff can validate creator applications.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    const discordId = String(interaction.customId.split(':')[1] || '');
+    loadStore();
+    const fromMessage = recordFromMessage(interaction.message);
+    const existing = registrations.get(discordId);
+    if (existing?.messageId && existing.messageId !== interaction.message.id) {
+        await interaction.message.edit({ components: [] }).catch(() => {});
+        await interaction.reply({
+            content: 'This notification was replaced by a newer application. Validate the latest one.',
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+    const source = fromMessage || existing;
+    if (!source || (source.discordId && source.discordId !== discordId)) {
+        await interaction.reply({ content: 'This notification has no application to validate.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    if (existing?.status === status || source.status === status) {
+        await interaction.reply({
+            content: status === 'approved' ? 'Already validated and stored.' : 'Already rejected.',
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const record = {
+        ...(existing || {}),
+        ...source,
+        discordId,
+        discordUsername: existing?.discordUsername || fromMessage?.discordUsername || '',
+        discordGlobalName: existing?.discordGlobalName || '',
+        status,
+        appliedAt: existing?.appliedAt || fromMessage?.appliedAt || new Date().toISOString(),
+        validatedAt: new Date().toISOString(),
+        validatedBy: { id: interaction.user.id, username: interaction.user.username || 'staff' },
+        messageId: interaction.message.id,
+        channelId: interaction.channelId,
+    };
+    await fillDiscordName(interaction.client, record);
+    registrations.set(discordId, record);
+    saveStore();
+    await interaction.message.edit({ embeds: [registrationEmbed(record)], components: [] }).catch(() => {});
+
+    const applicant = await interaction.client.users.fetch(discordId).catch(() => null);
+    const dm =
+        status === 'approved'
+            ? "You're approved for the **Ecom Efficiency** Creator Program. Warm up your accounts, post, and your payout details are saved."
+            : "Your **Ecom Efficiency** creator application wasn't approved this time.";
+    const sent = await applicant?.send(dm).catch(() => null);
+
+    await interaction.editReply(
+        status === 'approved'
+            ? `Validated and stored for payouts. Look them up with \`/username name:${record.discordUsername || discordId}\`.${sent ? '' : ' Could not DM them.'}`
+            : `Rejected.${sent ? '' : ' Could not DM them.'}`
+    );
 }
 
 /** Returns true when the interaction belonged to the creator channels. */
@@ -437,7 +808,58 @@ async function handleCreatorInteraction(interaction) {
         await submitRegistration(interaction);
         return true;
     }
+    if (interaction.isButton() && interaction.customId.startsWith(`${IDS.approve}:`)) {
+        await reviewRegistration(interaction, 'approved');
+        return true;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith(`${IDS.reject}:`)) {
+        await reviewRegistration(interaction, 'rejected');
+        return true;
+    }
     return false;
 }
 
-module.exports = { handleCreatorInteraction, publishCreatorChannels };
+function getUsernameSlashCommand() {
+    return new SlashCommandBuilder()
+        .setName(USERNAME_COMMAND)
+        .setDescription('Look up a creator application and the payout details saved for them.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption((option) =>
+            option
+                .setName('name')
+                .setDescription('Discord, TikTok, or Instagram username')
+                .setRequired(true)
+                .setMaxLength(100)
+        );
+}
+
+async function handleUsernameCommand(interaction) {
+    if (!canReview(interaction)) {
+        await interaction.reply({ content: 'Only staff can look up creator payout details.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    const query = interaction.options.getString('name', true);
+    if (registrations.size === 0) await syncRegistrationLog(interaction.client).catch(() => {});
+    const matches = findRegistrations(query).slice(0, 5);
+    if (!matches.length) {
+        await interaction.reply({
+            content: `No creator application stored for \`${query}\`. Validate one from the registration notification first.`,
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+    await interaction.reply({
+        embeds: matches.map(lookupEmbed),
+        flags: MessageFlags.Ephemeral,
+    });
+}
+
+module.exports = {
+    handleCreatorInteraction,
+    publishCreatorChannels,
+    getUsernameSlashCommand,
+    handleUsernameCommand,
+    syncRegistrationLog,
+    findRegistrations,
+    USERNAME_COMMAND,
+};

@@ -1,6 +1,6 @@
 /**
  * Dedicated EE content bot (separate Discord application from the ticket bot).
- * Runs only /ee-content, registered on every server the bot is in.
+ * Runs /ee-content and /username, registered on every server the bot is in.
  * Start with `node contentBot.js` (Railway: own service with BOT_ENTRY=contentBot.js).
  *
  * Env: CONTENT_BOT_TOKEN (required), STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS, PYTHON_BIN, FFMPEG_PATH.
@@ -25,7 +25,14 @@ const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = requir
 const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
 const { startFileServer } = require('./contentFiles');
 const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
-const { handleCreatorInteraction, publishCreatorChannels } = require('./creatorChannels');
+const {
+    handleCreatorInteraction,
+    publishCreatorChannels,
+    getUsernameSlashCommand,
+    handleUsernameCommand,
+    syncRegistrationLog,
+    USERNAME_COMMAND,
+} = require('./creatorChannels');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
 
@@ -39,14 +46,14 @@ startFileServer();
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 async function registerCommands() {
-    const command = getContentSlashCommand().toJSON();
+    const commands = [getContentSlashCommand().toJSON(), getUsernameSlashCommand().toJSON()];
     const joined = [...client.guilds.cache.values()];
     console.log(`[CONTENT-BOT] In ${joined.length} server(s): ${joined.map((g) => `${g.name} (${g.id})`).join(', ') || 'none'}`);
     for (const guildId of joined.map((g) => g.id)) {
         try {
             const guild = await client.guilds.fetch(guildId);
-            await guild.commands.set([command]);
-            console.log(`[CONTENT-BOT] /${CONTENT_COMMAND} registered on ${guild.name}`);
+            await guild.commands.set(commands);
+            console.log(`[CONTENT-BOT] /${CONTENT_COMMAND} and /${USERNAME_COMMAND} registered on ${guild.name}`);
         } catch (error) {
             console.warn(`[CONTENT-BOT] Could not register on guild ${guildId}:`, error?.message || error);
         }
@@ -65,6 +72,9 @@ client.once(Events.ClientReady, async (readyClient) => {
     await publishCreatorChannels(readyClient).catch((error) => {
         console.warn('[CREATOR] publish failed:', error?.message || error);
     });
+    await syncRegistrationLog(readyClient).catch((error) => {
+        console.warn('[CREATOR] registration sync failed:', error?.message || error);
+    });
 });
 
 client.on(Events.GuildCreate, () => {
@@ -75,6 +85,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand() && interaction.commandName === CONTENT_COMMAND) {
             await handleContentCommand(interaction);
+            return;
+        }
+        if (interaction.isChatInputCommand() && interaction.commandName === USERNAME_COMMAND) {
+            await handleUsernameCommand(interaction);
             return;
         }
         if (await handlePayoutInteraction(interaction)) return;
