@@ -27,8 +27,7 @@ const {
 } = require('./contentStudio');
 
 const PANEL_CHANNEL_ID = process.env.CONTENT_PANEL_CHANNEL_ID || '1556165419184816219';
-// Every content thread includes the reviewer, who is pinged in the info channel after each delivery.
-const INFO_CHANNEL_ID = process.env.CONTENT_INFO_CHANNEL_ID || '1556165339413352518';
+// Every content thread includes the reviewer.
 const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
 const CREATOR_ROLE_ID = process.env.CREATOR_ROLE_ID || '1560108191142903868';
 const APPLY_CHANNEL_ID = process.env.CREATOR_APPLY_CHANNEL_ID || '1556165097984892928';
@@ -187,22 +186,6 @@ async function addReviewer(thread) {
     );
 }
 
-async function notifyReviewer(client, user, summary, link) {
-    if (!REVIEWER_ID) return;
-    const channel = await client.channels.fetch(INFO_CHANNEL_ID).catch(() => null);
-    if (!channel?.isTextBased?.()) {
-        console.warn(`[CONTENT-PANEL] Info channel ${INFO_CHANNEL_ID} not reachable.`);
-        return;
-    }
-    const ping = user.id === REVIEWER_ID ? '' : `<@${REVIEWER_ID}> `;
-    await channel
-        .send({
-            content: `${ping}🎬 ${user} created **${summary}** → ${link}`,
-            allowedMentions: { users: ping ? [REVIEWER_ID] : [] },
-        })
-        .catch((error) => console.warn('[CONTENT-PANEL] Info ping failed:', error?.message || error));
-}
-
 /** Private thread per user; falls back to the channel itself if the bot cannot create threads. */
 async function getDeliveryTarget(channel, member) {
     try {
@@ -274,24 +257,11 @@ async function startJob(interaction, kind, count) {
             );
 
             const done = (result.items || []).length;
-            let firstMessage = null;
-            const send = async (payload) => {
-                const message = await target.send(payload);
-                firstMessage ||= message;
-                return message;
-            };
+            const send = (payload) => target.send(payload);
             if (carouselStyle) await deliverCarousels(send, result, `${interaction.user} `);
             else await deliverVideos(send, result, `${interaction.user} `);
 
             const plural = count > 1 ? 's' : '';
-            if (done) {
-                await notifyReviewer(
-                    interaction.client,
-                    interaction.user,
-                    `${done} ${label}${done > 1 ? 's' : ''}`,
-                    firstMessage?.url || target.url || `${target}`
-                );
-            }
             const embed = new EmbedBuilder()
                 .setColor(done ? DONE_COLOR : 0xed4245)
                 .setDescription(
