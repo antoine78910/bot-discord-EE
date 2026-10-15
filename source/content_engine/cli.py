@@ -146,6 +146,13 @@ def cmd_carousel(args) -> dict:
                     args.out / f"carousel_{index}",
                     seed=_seed(),
                 )
+            elif args.style == "dead-frames":
+                from ee_engine.ee_dead_frames import build_dead_frames_carousel
+
+                result = build_dead_frames_carousel(
+                    args.out / f"carousel_{index}",
+                    seed=_seed(),
+                )
             elif args.style == "steps":
                 result = build_steps_carousel(
                     args.out / f"carousel_{index}",
@@ -240,7 +247,7 @@ def main() -> int:
     carousel.add_argument("--count", type=int, default=1)
     carousel.add_argument("--avatar", default=None)
     carousel.add_argument("--color", default=None)
-    carousel.add_argument("--style", default="tools", choices=("tools", "best-business", "dead", "steps"))
+    carousel.add_argument("--style", default="tools", choices=("tools", "best-business", "dead", "dead-frames", "steps"))
     carousel.add_argument("--out", type=Path, required=True)
 
     clean = sub.add_parser("cleanvideo")

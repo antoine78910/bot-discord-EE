@@ -51,6 +51,7 @@ const KINDS = {
     workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success, staffOnly: true },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
+    deadframes: { label: 'is dead carousel (video frames)', button: 'Is dead (frames)', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary, staffOnly: true },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
 };
 
@@ -247,7 +248,7 @@ async function startJob(interaction, kind, count) {
         const jobDir = makeJobDir();
         try {
             await interaction.editReply({ content: '', embeds: [progressEmbed(kind, 1, count)] }).catch(() => {});
-            const carouselStyles = { carousel: 'tools', bestbiz: 'best-business', dead: 'dead', steps: 'steps' };
+            const carouselStyles = { carousel: 'tools', bestbiz: 'best-business', dead: 'dead', deadframes: 'dead-frames', steps: 'steps' };
             const carouselStyle = carouselStyles[kind];
             const args = carouselStyle
                 ? ['carousel', '--count', String(count), '--out', jobDir, '--style', carouselStyle]

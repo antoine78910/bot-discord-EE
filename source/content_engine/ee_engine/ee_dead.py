@@ -197,7 +197,11 @@ def build_dead_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
             bg = gc._load_cover_augmented(path, gc.CANVAS_W, gc.CANVAS_H, "none")
         cta = rng.choice(END_CTAS) if len(rendered) == len(SLIDE_LINES) - 1 else None
         rendered.append(_render_slide(gc, bg, lines, anchor, cta))
+    return export_carousel(rendered, out_dir, rng, style="dead")
 
+
+def export_carousel(rendered: list[Image.Image], out_dir: Path, rng: random.Random, *, style: str) -> CarouselResult:
+    """iPhone-signed JPGs (consecutive IMG numbers, a few seconds apart) plus an untouched ZIP."""
     work = out_dir / f"carousel_{uuid.uuid4().hex[:10]}"
     work.mkdir(parents=True, exist_ok=True)
     taken_at = datetime.now().astimezone() - timedelta(minutes=rng.uniform(3, 25))
@@ -233,5 +237,5 @@ def build_dead_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
         avatar_pack="dead",
         avatar="",
         color="stroke",
-        style="dead",
+        style=style,
     )

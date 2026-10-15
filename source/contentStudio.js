@@ -94,6 +94,7 @@ function getContentSlashCommand() {
                             { name: 'Tools — avatar hook + app steps', value: 'tools' },
                             { name: 'Best business — stroke text', value: 'best-business' },
                             { name: 'Dropshipping is dead — stroke text', value: 'dead' },
+                            { name: 'Dropshipping is dead — workflow video frames', value: 'dead-frames' },
                             { name: '5 steps — labels and logos', value: 'steps' }
                         )
                 )
@@ -288,6 +289,7 @@ async function deliverCarouselItems(send, items, prefix) {
         const DETAILS = {
             'best-business': 'Best business · stroke text · business class + lifestyle',
             dead: 'Dropshipping is dead · 10 slides',
+            'dead-frames': 'Dropshipping is dead · 10 slides from workflow video frames',
             steps: '5 steps · white labels and logos',
         };
         const detail = DETAILS[item.style] || `avatar \`${item.avatar_pack}\` · color \`${item.color}\``;
