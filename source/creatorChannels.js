@@ -295,9 +295,10 @@ function templates(link) {
                     'Comment “AI” to try it!',
                     'Comment “AI” for the method',
                     'Comment “AI” for the link',
-                    '_(the keyword must match the links configured below)_',
+                    'Comment “Ecom” for the full workflow',
+                    'Comment “AI” to get the full guide',
                     '',
-                    '**Website link to send (all buttons):**',
+                    '**Guide to send:**',
                     DM_LINK,
                 ].join('\n')
             ),
