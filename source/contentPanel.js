@@ -49,6 +49,7 @@ const CAROUSEL_EMOJI = '🖼️';
 const KINDS = {
     variator: { label: 'app demo video', button: 'App demo video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     youry: { label: 'hook video', button: 'Hook video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
+    workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success, staffOnly: true },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
@@ -85,7 +86,7 @@ function panelComponents() {
     ];
 }
 
-function pickerComponents(quantity) {
+function pickerComponents(quantity, staff = false) {
     const select = new StringSelectMenuBuilder()
         .setCustomId(IDS.quantity)
         .setPlaceholder('How many?')
@@ -96,7 +97,8 @@ function pickerComponents(quantity) {
                 default: i + 1 === quantity,
             }))
         );
-    const buttons = Object.entries(KINDS).map(([kind, meta]) =>
+    const kinds = Object.entries(KINDS).filter(([, meta]) => staff || !meta.staffOnly);
+    const buttons = kinds.map(([kind, meta]) =>
         new ButtonBuilder()
             .setCustomId(`${IDS.makePrefix}${kind}:${quantity}`)
             .setLabel(quantity > 1 ? `${meta.button} ×${quantity}` : meta.button)
@@ -326,7 +328,7 @@ async function handlePanelInteraction(interaction) {
         }
         await interaction.reply({
             content: '**What do you want to generate?** Pick a quantity, then a type.',
-            components: pickerComponents(1),
+            components: pickerComponents(1, isStaff(interaction)),
             flags: MessageFlags.Ephemeral,
         });
         return true;
@@ -334,13 +336,17 @@ async function handlePanelInteraction(interaction) {
 
     if (interaction.isStringSelectMenu() && interaction.customId === IDS.quantity) {
         const quantity = Math.max(1, Math.min(MAX_ITEMS, Number(interaction.values[0]) || 1));
-        await interaction.update({ components: pickerComponents(quantity) });
+        await interaction.update({ components: pickerComponents(quantity, isStaff(interaction)) });
         return true;
     }
 
     if (interaction.isButton() && interaction.customId.startsWith(IDS.makePrefix)) {
         const [kind, rawCount] = interaction.customId.slice(IDS.makePrefix.length).split(':');
         if (!KINDS[kind]) return false;
+        if (KINDS[kind].staffOnly && !isStaff(interaction)) {
+            await interaction.reply({ content: `The ${KINDS[kind].label} is reserved for staff for now.`, flags: MessageFlags.Ephemeral });
+            return true;
+        }
         const count = Math.max(1, Math.min(MAX_ITEMS, Number(rawCount) || 1));
         await startJob(interaction, kind, count);
         return true;
