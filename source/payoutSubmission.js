@@ -1,14 +1,17 @@
 /**
  * Payout submission (port of the YouRy bot's payout_submission.py).
- * Panel with a "Submit Payout" button -> private payout-<user> channel between the creator and staff,
+ * Panel with a "Submit Payout" button -> private payout-<user> channel,
  * with "Mark Paid & Close" (DMs the creator) and "Close Ticket" buttons.
+ *
+ * A ticket is visible only to the creator who opened it, the bot, the server owner and
+ * CONTENT_REVIEWER_ID / OWNER_USER_ID (Discord administrators always see every channel).
+ * Open tickets are re-locked to that list on every start.
  *
  * Env:
  *   PAYOUT_SUBMISSION_CHANNEL_ID   panel channel (default: first channel whose name contains "payout-submission")
  *   PAYOUT_TICKET_CATEGORY_ID      category for tickets (default: the panel channel's category)
- *   PAYOUT_NOTIFY_ROLE_ID          role pinged and given access in new tickets
- *   STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS   roles that can see tickets
- *   CONTENT_REVIEWER_ID / OWNER_USER_ID      user pinged and given access in new tickets
+ *   STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS   roles allowed to click Submit Payout without the creator role
+ *   CONTENT_REVIEWER_ID / OWNER_USER_ID      user pinged and given access in tickets
  */
 const crypto = require('crypto');
 const {
@@ -34,8 +37,10 @@ const APPLY_CHANNEL_ID = process.env.CREATOR_APPLY_CHANNEL_ID || '15561650979848
 const NOT_ALLOWED = `🚀 You need to register first to submit a payout. Go to <#${APPLY_CHANNEL_ID}>, click **Register**, then come back here.`;
 const PANEL_CHANNEL_ID = process.env.PAYOUT_SUBMISSION_CHANNEL_ID || '';
 const TICKET_CATEGORY_ID = process.env.PAYOUT_TICKET_CATEGORY_ID || '';
-const NOTIFY_ROLE_ID = process.env.PAYOUT_NOTIFY_ROLE_ID || '';
 const REVIEWER_ID = process.env.CONTENT_REVIEWER_ID || process.env.OWNER_USER_ID || '';
+const OWNER_IDS = [process.env.CONTENT_REVIEWER_ID, process.env.OWNER_USER_ID]
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
 const STAFF_ROLE_IDS = [
     process.env.STAFF_ROLE_ID,
     process.env.TICKET_STAFF_ROLE_ID,
@@ -91,14 +96,11 @@ function ticketName(user) {
     return `payout-${(cleaned || 'user').slice(0, 32)}`;
 }
 
-/** The opener is the only non-bot member with an explicit view overwrite. */
+/** The opener is the only member with an explicit view overwrite besides the bot and the owners. */
 function ticketOpenerId(channel) {
+    const others = new Set([channel.client.user.id, channel.guild.ownerId, ...OWNER_IDS]);
     const overwrite = channel.permissionOverwrites.cache.find(
-        (entry) =>
-            entry.type === 1 &&
-            entry.id !== channel.client.user.id &&
-            entry.id !== REVIEWER_ID &&
-            entry.allow.has(PermissionFlagsBits.ViewChannel)
+        (entry) => entry.type === 1 && !others.has(entry.id) && entry.allow.has(PermissionFlagsBits.ViewChannel)
     );
     return overwrite?.id || null;
 }
@@ -148,31 +150,55 @@ async function publishPayoutPanel(client) {
         } catch (error) {
             console.warn(`[PAYOUT] Could not publish panel in #${channel.name}:`, error?.message || error);
         }
+        await lockOpenTickets(guild).catch((error) => console.warn('[PAYOUT] Ticket lock failed:', error?.message || error));
     }
 }
 
-async function ticketOverwrites(guild, member) {
+/** Only the opener, the bot and the owners: no role gets access, so @everyone/staff/creators can't see it. */
+async function ticketOverwrites(guild, openerId) {
     const access = [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.AttachFiles,
         PermissionFlagsBits.ReadMessageHistory,
     ];
+    const me = guild.members.me || (await guild.members.fetchMe());
     const overwrites = [
         { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: member.id, allow: access },
-        { id: guild.members.me.id, allow: [...access, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
+        { id: me.id, allow: [...access, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
     ];
-    for (const roleId of new Set([...STAFF_ROLE_IDS, NOTIFY_ROLE_ID].filter(Boolean))) {
-        if (guild.roles.cache.has(roleId)) {
-            overwrites.push({ id: roleId, allow: [...access, PermissionFlagsBits.ManageMessages] });
-        }
-    }
-    if (REVIEWER_ID && REVIEWER_ID !== member.id) {
-        const reviewer = await guild.members.fetch(REVIEWER_ID).catch(() => null);
-        if (reviewer) overwrites.push({ id: reviewer.id, allow: [...access, PermissionFlagsBits.ManageMessages] });
+    if (openerId && openerId !== me.id) overwrites.push({ id: openerId, allow: access });
+    for (const ownerId of new Set([guild.ownerId, ...OWNER_IDS])) {
+        if (!ownerId || ownerId === openerId || ownerId === me.id) continue;
+        const owner = await guild.members.fetch(ownerId).catch(() => null);
+        if (owner) overwrites.push({ id: owner.id, allow: [...access, PermissionFlagsBits.ManageMessages] });
     }
     return overwrites;
+}
+
+/** Re-apply the private overwrites to every open payout ticket (fixes tickets opened with staff-role access). */
+async function lockOpenTickets(guild) {
+    const channels = await guild.channels.fetch().catch(() => guild.channels.cache);
+    let locked = 0;
+    for (const channel of channels.values()) {
+        if (!isTicketChannel(channel)) continue;
+        const openerId = ticketOpenerId(channel);
+        const roles = channel.permissionOverwrites.cache
+            .filter((entry) => entry.type === 0 && entry.id !== guild.id && entry.allow.has(PermissionFlagsBits.ViewChannel))
+            .map((entry) => guild.roles.cache.get(entry.id)?.name || entry.id);
+        try {
+            await channel.permissionOverwrites.set(await ticketOverwrites(guild, openerId), 'Payout tickets are private');
+            locked += 1;
+            if (roles.length || !openerId) {
+                console.log(
+                    `[PAYOUT] Locked #${channel.name}: removed role access [${roles.join(', ') || 'none'}]${openerId ? '' : ' · opener unknown'}`
+                );
+            }
+        } catch (error) {
+            console.warn(`[PAYOUT] Could not lock #${channel.name}:`, error?.message || error);
+        }
+    }
+    console.log(`[PAYOUT] ${locked} open ticket(s) private in ${guild.name}`);
 }
 
 function canSubmit(member) {
@@ -210,7 +236,7 @@ async function openTicket(interaction) {
             name,
             type: ChannelType.GuildText,
             parent,
-            permissionOverwrites: await ticketOverwrites(guild, member),
+            permissionOverwrites: await ticketOverwrites(guild, member.id),
             reason: `Payout ticket for ${member.user.tag}`,
         });
     } catch (error) {
@@ -218,12 +244,12 @@ async function openTicket(interaction) {
         return;
     }
 
-    const pings = [NOTIFY_ROLE_ID && `<@&${NOTIFY_ROLE_ID}>`, REVIEWER_ID && REVIEWER_ID !== member.id && `<@${REVIEWER_ID}>`].filter(Boolean);
+    const ping = REVIEWER_ID && REVIEWER_ID !== member.id ? `<@${REVIEWER_ID}>` : '';
     await ticket.send({
-        content: pings.join(' ') || undefined,
+        content: ping || undefined,
         embeds: [ticketEmbed(member, crypto.randomUUID())],
         components: [ticketRow()],
-        allowedMentions: { roles: NOTIFY_ROLE_ID ? [NOTIFY_ROLE_ID] : [], users: REVIEWER_ID ? [REVIEWER_ID] : [] },
+        allowedMentions: { users: ping ? [REVIEWER_ID] : [] },
     });
     await interaction.editReply(`✅ Your payout ticket is ready: ${ticket}`);
 }
@@ -233,6 +259,14 @@ async function closeTicket(interaction, paid) {
     if (!isTicketChannel(channel)) return;
     if (!channel.permissionsFor(interaction.member)?.has(PermissionFlagsBits.ViewChannel)) {
         await interaction.reply({ content: "You don't have permission to manage this ticket.", flags: MessageFlags.Ephemeral });
+        return;
+    }
+    const isOwner =
+        interaction.user.id === interaction.guild.ownerId ||
+        OWNER_IDS.includes(interaction.user.id) ||
+        interaction.member.permissions?.has?.(PermissionFlagsBits.Administrator);
+    if (paid && !isOwner) {
+        await interaction.reply({ content: 'Only the admin can mark a payout as paid.', flags: MessageFlags.Ephemeral });
         return;
     }
     if (paid) {
