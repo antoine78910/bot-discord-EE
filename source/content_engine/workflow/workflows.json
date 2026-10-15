@@ -67,7 +67,7 @@
             { "clip": "workflow", "from": "broad" },
             { "clip": "static ads", "from": "broad", "optional": true },
             { "clip": "input workflow", "from": "product" },
-            { "clip": "show workflow", "from": "product", "optional": true },
+            { "clip": "show workflow", "from": "any", "optional": true },
             { "clip": "ads", "from": "product" },
             { "clip": "meta", "from": "broad" },
             {
