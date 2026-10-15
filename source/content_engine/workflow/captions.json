@@ -1,10 +1,9 @@
 {
-  "_help": "On-screen caption per workflow step (key = clip name from workflows.json). One variant is drawn at random per video; the same text is never used twice in one video. Remove a key or leave [] for no caption.",
+  "_help": "On-screen caption per workflow step (key = clip name from workflows.json). The final clip (katching or result) always uses the result texts. One variant is drawn at random per video; the same text is never used twice in one video. Remove a key or leave [] for no caption.",
 
   "tiktok": [
-    "First, find a winning product on TikTok",
-    "Start on TikTok to spot trending products",
-    "Open TikTok to find your next winner"
+    "Get over to TikTok",
+    "Open TikTok"
   ],
   "mademebuyit": [
     "Search #tiktokmademebuyit",
@@ -89,24 +88,26 @@
   "generate": [
     "Hit generate",
     "Click generate",
-    "Generate the ad"
+    "Generate the ads"
   ],
   "loading ugc": [
-    "AI creates a UGC ad for you",
-    "AI writes, films and edits the ad",
-    "Generating a UGC ad with AI"
+    "Let AI cook",
+    "AI creates UGC ads for you",
+    "AI writes, films and edits the ads",
+    "Generating UGC ads with AI"
   ],
   "ugc": [
     "No creator, no camera, just AI",
-    "This ad was 100% made with AI",
-    "Looks real, right? It's AI",
-    "Your UGC ad is ready",
-    "A UGC ad without hiring a creator"
+    "These ads were 100% made with AI",
+    "Look real, right? It's AI",
+    "Your UGC ads are ready",
+    "UGC ads without hiring a creator"
   ],
   "ig": [
-    "Post it on Instagram and TikTok",
-    "Launch it on Instagram",
-    "Post the ad on your socials"
+    "Post on Instagram",
+    "Post them on Instagram and TikTok",
+    "Launch them on Instagram",
+    "Post the ads on your socials"
   ],
 
   "workflow": [
@@ -142,12 +143,6 @@
     "Run the ads on Facebook and Instagram",
     "Create a Meta campaign and upload them"
   ],
-  "katching": [
-    "Ka-ching! First sales",
-    "Ka-ching!",
-    "That sound never gets old"
-  ],
-
   "result": [
     "And the sales start coming in",
     "Then watch the orders come in",

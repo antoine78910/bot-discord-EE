@@ -73,6 +73,9 @@ MUSIC_VOLUME = 0.8
 # Sale notification clips are recorded quietly: boost them on top of the full-volume music.
 KEPT_AUDIO_VOLUME = 3.0
 
+# Product clip pools also hold other products' clips under this prefix (for from: product_or_other).
+OTHER_PREFIX = "~other:"
+
 _VARIANT_SUFFIX = re.compile(r"[\s_-]*(\(\d+\)|\d+)$")
 _SEPARATORS = re.compile(r"[\s_-]+")
 
@@ -123,6 +126,8 @@ def _pool(step: dict, broad: dict, product: dict) -> list[Path]:
         return product.get(key, [])
     if source == "any":
         return product.get(key) or broad.get(key, [])
+    if source == "product_or_other":
+        return product.get(key) or product.get(OTHER_PREFIX + key, [])
     return broad.get(key, [])
 
 
@@ -162,14 +167,20 @@ def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
 
 
 def _pick(plan: list[dict], broad: dict, product: dict, rng: random.Random) -> list[tuple[Path, bool, str]]:
-    """One variant per step; a clip is reused only when its step has no other variant left.
-    Returns (clip, keep_audio, step key) triples."""
+    """One variant per step, drawn from a persistent shuffled deck so every variant
+    (e.g. all 14 katching clips) is used before any repeats.
+    Returns (clip, keep_audio, caption key) triples; "caption" on a step borrows another step's texts."""
+    from youry import clip_assembler as ca
+
+    recent = ca._load_recent()
     picked: list[tuple[Path, bool, str]] = []
     for step in plan:
         options = _pool(step, broad, product)
         used = [clip for clip, _, _ in picked]
-        fresh = [clip for clip in options if clip not in used] or options
-        picked.append((rng.choice(fresh), bool(step.get("keep_audio")), normalize(step["clip"])))
+        deck = f"workflow:{options[0].parent.name}:{normalize(step['clip'])}"
+        clip = ca.draw_from_deck(rng, options, deck, 1, recent, exclude=used)[0]
+        picked.append((clip, bool(step.get("keep_audio")), normalize(step.get("caption", step["clip"]))))
+    ca.save_recent(recent)
     return picked
 
 
@@ -285,7 +296,8 @@ def plan_workflow(
         raise EngineError("No workflow defined in workflow/workflows.json.")
     if workflow and workflow not in workflows:
         raise EngineError(f"Unknown workflow '{workflow}'. Known: {', '.join(workflows)}.")
-    products = [p for p in _products() if not product or p.name.lower() == product.lower()]
+    products_all = _products()
+    products = [p for p in products_all if not product or p.name.lower() == product.lower()]
     if not products:
         raise EngineError("No product folder in workflow/products" + (f" named '{product}'." if product else "."))
 
@@ -295,6 +307,10 @@ def plan_workflow(
         name = workflow or rng.choice(list(workflows))
         folder = rng.choice(products)
         product_clips = _clips(folder)
+        for other in products_all:
+            if other != folder:
+                for key, paths in _clips(other).items():
+                    product_clips.setdefault(OTHER_PREFIX + key, []).extend(paths)
         path: list[str] = []
         plan: list[dict] = []
         missing: list[str] = []
