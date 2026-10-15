@@ -1,5 +1,5 @@
 {
-  "_help": "See ee_engine/workflow_video.py. from: broad | product | any (product clip if it exists, else broad). optional: skip when no clip. keep_audio: keep the clip's own sound over the music (all other clips are muted). one_of: pick one branch (weight). chance: play the steps with that probability. clip = file name without the variant number.",
+  "_help": "See ee_engine/workflow_video.py. from: broad | product | any (product clip if it exists, else broad). optional: skip when no clip. keep_audio: keep the clip's own sound over the music (all other clips are muted). one_of: pick one branch (weight). chance: play the steps with that probability. any_clip: exactly one clip drawn evenly across all variants of the listed steps. clip = file name without the variant number.",
   "dropshipping": [
     {
       "one_of": [
@@ -49,7 +49,12 @@
             { "clip": "show ugc", "from": "product", "optional": true },
             { "clip": "ugc", "from": "product" },
             { "clip": "ig", "from": "product", "optional": true },
-            { "clip": "result", "from": "broad" }
+            {
+              "any_clip": [
+                { "clip": "katching", "from": "broad", "keep_audio": true },
+                { "clip": "result", "from": "broad" }
+              ]
+            }
           ]
         },
         {
@@ -62,15 +67,9 @@
             { "clip": "ads", "from": "product" },
             { "clip": "meta", "from": "broad" },
             {
-              "one_of": [
-                { "label": "Result", "steps": [{ "clip": "result", "from": "broad" }] },
-                {
-                  "label": "Katching + result",
-                  "steps": [
-                    { "clip": "katching", "from": "broad", "keep_audio": true },
-                    { "clip": "result", "from": "broad" }
-                  ]
-                }
+              "any_clip": [
+                { "clip": "katching", "from": "broad", "keep_audio": true },
+                { "clip": "result", "from": "broad" }
               ]
             }
           ]

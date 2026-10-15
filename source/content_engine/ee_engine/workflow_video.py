@@ -135,6 +135,14 @@ def _walk(nodes: list[dict], broad: dict, product: dict, rng: random.Random,
             if branch.get("label"):
                 path.append(branch["label"])
             _walk(branch["steps"], broad, product, rng, path, plan, missing, skipped)
+        elif "any_clip" in node:
+            # One clip drawn evenly across every variant of these steps (12 katching + 2 result = 1/14 each).
+            options = [step for step in node["any_clip"] if _pool(step, broad, product)]
+            if options:
+                weights = [len(_pool(step, broad, product)) for step in options]
+                plan.append(rng.choices(options, weights=weights, k=1)[0])
+            elif not node.get("optional"):
+                missing.append(" or ".join(step["clip"] for step in node["any_clip"]))
         elif "chance" in node:
             if rng.random() < node["chance"]:
                 if node.get("label"):
