@@ -29,6 +29,9 @@ const IDS = {
     close: 'ee_payout_close',
 };
 
+const CREATOR_ROLE_ID = process.env.CREATOR_ROLE_ID || '1560108191142903868';
+const APPLY_CHANNEL_ID = process.env.CREATOR_APPLY_CHANNEL_ID || '1556165097984892928';
+const NOT_ALLOWED = `🚀 You need to register first to submit a payout. Go to <#${APPLY_CHANNEL_ID}>, click **Register**, then come back here.`;
 const PANEL_CHANNEL_ID = process.env.PAYOUT_SUBMISSION_CHANNEL_ID || '';
 const TICKET_CATEGORY_ID = process.env.PAYOUT_TICKET_CATEGORY_ID || '';
 const NOTIFY_ROLE_ID = process.env.PAYOUT_NOTIFY_ROLE_ID || '';
@@ -172,10 +175,20 @@ async function ticketOverwrites(guild, member) {
     return overwrites;
 }
 
+function canSubmit(member) {
+    if (member.permissions?.has?.(PermissionFlagsBits.Administrator)) return true;
+    const roles = member.roles?.cache ? [...member.roles.cache.keys()] : Array.isArray(member.roles) ? member.roles : [];
+    return roles.includes(CREATOR_ROLE_ID) || roles.some((roleId) => STAFF_ROLE_IDS.includes(roleId));
+}
+
 async function openTicket(interaction) {
     const { guild, member } = interaction;
     if (!guild || !member) {
         await interaction.reply({ content: 'This button only works in a server.', flags: MessageFlags.Ephemeral });
+        return;
+    }
+    if (!canSubmit(member)) {
+        await interaction.reply({ content: NOT_ALLOWED, flags: MessageFlags.Ephemeral });
         return;
     }
 
