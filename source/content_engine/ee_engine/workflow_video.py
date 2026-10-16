@@ -378,10 +378,12 @@ def _render(
     output: Path,
     rng: random.Random,
     cta: Path | None = None,
+    with_music: bool = True,
 ) -> None:
     """Hook + muted body clips (except keep_audio) + captions + music, with light visual variation.
 
     The last clip shows its caption on the first half and the centered CTA on the second half.
+    Without music, only the keep_audio clips (e.g. the katching sale sound) are heard.
     """
     scale_crop = (
         f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
@@ -458,7 +460,7 @@ def _render(
 
     filters.append(
         f"[{music_index}:a]aresample=44100,aformat=channel_layouts=stereo,"
-        f"volume={MUSIC_VOLUME},aloop=loop=-1:size=2e+09,atrim=duration={total:.3f},"
+        f"volume={MUSIC_VOLUME if with_music else 0},aloop=loop=-1:size=2e+09,atrim=duration={total:.3f},"
         f"asetpts=PTS-STARTPTS[music]"
     )
     mix = ["[music]"]
@@ -514,18 +516,24 @@ def render_workflow_video(
         cta_options = load_captions().get("cta") or []
         cta_text = rng.choice(cta_options) if cta_options else None
         cta = _caption_png(cta_text, work / "cta.png") if cta_text else None
-        rendered = work / "workflow.mp4"
-        _render(pick, clips, captions, rendered, rng, cta)
-        duration = probe_duration(rendered)
         silent = silent_turn("workflow", every=4)
+        has_clip_sound = any(keep and has_audio_stream(clip) for clip, keep, _ in clips)
+        rendered = work / "workflow.mp4"
+        _render(pick, clips, captions, rendered, rng, cta, with_music=not silent)
+        duration = probe_duration(rendered)
         final = _finalize(
-            rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature, silent=silent
+            rendered,
+            out_dir,
+            rng=rng,
+            max_bytes=max_bytes,
+            iphone_signature=iphone_signature,
+            silent=silent and not has_clip_sound,
         )
         music = "none" if silent else pick.music.stem
         text = pick.text_hook.stem if pick.text_hook else "none"
         scenes = [f"`0` hook · {pick.hook.stem} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
         for i, ((clip, keep, key), caption) in enumerate(zip(clips, texts), start=1):
-            sound = " 🔊" if keep and not silent else ""
+            sound = " 🔊" if keep else ""
             scenes.append(
                 f"`{i}` **{key}** · {clip.stem}{sound} · {probe_duration(clip):.1f}s"
                 + (f" · “{caption}”" if caption else " · no caption")
