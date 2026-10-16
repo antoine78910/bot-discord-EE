@@ -339,13 +339,19 @@ def _youry():
     return ca
 
 
-def _pick_hook(rng: random.Random) -> HookPick:
-    """YouRy hook videos plus the workflow's own, workflow music (else YouRy's), workflow text hooks."""
+def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPick:
+    """Hook video from one of three equally likely pools (YouRy hooks, workflow hook videos,
+    katching clips), workflow music (else YouRy's), workflow text hooks.
+    `exclude` keeps the clip already used as the ending out of the hook slot."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
-    hooks = ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT)
-    if HOOK_VIDEOS_DIR.is_dir():
-        hooks += ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT)
+    hook_pools = {
+        "youry": ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT),
+        "workflow": ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT),
+        "katching": _clips(BROAD_DIR).get("katching", []),
+    }
+    blocked = set(exclude or [])
+    hook_pools = {name: pool for name, pool in hook_pools.items() if any(p not in blocked for p in pool)}
     tracks: list[Path] = []
     if MUSIC_DIR.is_dir():
         tracks = [
@@ -356,13 +362,15 @@ def _pick_hook(rng: random.Random) -> HookPick:
     music_key = "workflow_music"
     if not tracks:
         tracks, music_key = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT), "music"
-    if not hooks:
-        raise EngineError(f"No hook videos in {ca.hooks_dir()}.")
+    if not hook_pools:
+        raise EngineError(f"No hook videos in {ca.hooks_dir()}, {HOOK_VIDEOS_DIR} or katching clips.")
     if not tracks:
         raise EngineError(f"No music in {MUSIC_DIR} or {ca.music_dir()}.")
     recent = ca._load_recent()
     picked_text = ca._pick_fresh(rng, text_hooks, "workflow_text_hooks", recent)
-    hook = ca._pick_fresh(rng, hooks, "workflow_hooks", recent)
+    groups = [Path("hook_pools") / name for name in hook_pools]
+    group = ca.draw_from_deck(rng, groups, "workflow_hook_pool", 1, recent)[0].name
+    hook = ca.draw_from_deck(rng, hook_pools[group], f"workflow_hooks:{group}", 1, recent, exclude=list(blocked))[0]
     music = ca._pick_fresh(rng, tracks, music_key, recent)
     try:
         ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
@@ -503,7 +511,7 @@ def render_workflow_video(
 ) -> VideoResult:
     rng = random.Random(seed)
     name, folder, branches, clips, skipped = plan_workflow(rng, workflow=workflow, product=product)
-    pick = _pick_hook(rng)
+    pick = _pick_hook(rng, exclude=[clip for clip, _, _ in clips])
 
     work = out_dir / f"work_{uuid.uuid4().hex[:10]}"
     work.mkdir(parents=True, exist_ok=True)
