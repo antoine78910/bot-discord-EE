@@ -74,7 +74,7 @@ function panelEmbed() {
                 '🖼️ **Workflow**: 10 slides built from real workflow screen recordings, unlimited variations',
                 '🖼️ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
-                'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',
+                'Pick 1 to 5 at once. Every export is unique.',
                 'Your files land in your private thread under this channel.',
             ].join('\n')
         );
@@ -222,7 +222,7 @@ async function getDeliveryTarget(channel, member) {
                     .setTitle('🎬 Your content workspace')
                     .setDescription(
                         `Hey ${member} — your videos and carousels will appear here.\n` +
-                            'Download carousel ZIPs to keep the iPhone metadata (Discord previews strip it).'
+                            'Always download from the links (full quality), not from Discord previews.'
                     ),
             ],
         });

@@ -256,11 +256,13 @@ async function deliverVideos(send, result, prefix = '') {
     const items = result.items || [];
     for (const [index, item] of items.entries()) {
         const label = VIDEO_LABELS[item.type] || '🎬 Video';
-        const header = `${prefix}${label} **${index + 1}/${items.length}** — ${item.duration}s · 📱 iPhone 15 Pro metadata`;
+        const header = `${prefix}${label} **${index + 1}/${items.length}** — ${item.duration}s`;
+        // Only the "no sound" note is worth showing to creators; the rest is internal detail.
+        const notes = (item.details || []).filter((line) => line.startsWith('**Sound:**'));
         if (isHostingEnabled()) {
             const hosted = await publishFiles([item.path], `${label} ${index + 1}/${items.length}`);
             await send({
-                content: fitContent([header, '⬇️ Download from the link below (full quality, do not re-download from Discord).', ...(item.details || [])]),
+                content: fitContent([header, '⬇️ Download from the link below (full quality, do not re-download from Discord).', ...notes]),
                 components: [
                     linkRow([
                         { label: 'Download video', url: hosted.files[0].download },
@@ -271,7 +273,7 @@ async function deliverVideos(send, result, prefix = '') {
             continue;
         }
         await send({
-            content: fitContent([header, ...(item.details || [])]),
+            content: fitContent([header, ...notes]),
             files: [new AttachmentBuilder(item.path, { name: path.basename(item.path) })],
         });
     }
@@ -286,22 +288,18 @@ async function deliverCarouselItems(send, items, prefix) {
         const slides = (item.slides || []).map(
             (slide) => new AttachmentBuilder(slide, { name: path.basename(slide) })
         );
-        const DETAILS = {
-            'best-business': 'Best business · stroke text · business class + lifestyle',
-            dead: 'Dropshipping is dead · 10 slides',
-            'dead-frames': 'Workflow · 10 slides from workflow video frames',
-            steps: '5 steps · white labels and logos',
+        const NAMES = {
+            'best-business': 'Best business',
+            dead: 'Is dead',
+            'dead-frames': 'Workflow',
+            steps: '5 steps',
         };
-        const detail = DETAILS[item.style] || `avatar \`${item.avatar_pack}\` · color \`${item.color}\``;
-        const header = [
-            `${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — ${detail} · 📱 iPhone EXIF`,
-            `**Hook:** ${item.hook}`,
-        ];
+        const header = [`${prefix}🖼️ **Carousel ${index + 1}/${items.length}** — ${NAMES[item.style] || 'Tools'}`];
         if (isHostingEnabled()) {
-            const hosted = await publishFiles([...(item.slides || []), item.zip], `Carousel ${index + 1}/${items.length} — ${item.hook}`);
+            const hosted = await publishFiles([...(item.slides || []), item.zip], `Carousel ${index + 1}/${items.length} — ${NAMES[item.style] || 'Tools'}`);
             const zip = hosted.files[hosted.files.length - 1];
             await send({
-                content: [...header, '⬇️ Download from the links below (original JPGs with iPhone EXIF, do not download from Discord).'].join('\n'),
+                content: [...header, '⬇️ Download from the links below (full quality, do not download from Discord).'].join('\n'),
                 components: [
                     linkRow([
                         { label: 'Download ZIP (all slides)', url: zip.download },
@@ -316,7 +314,7 @@ async function deliverCarouselItems(send, items, prefix) {
             files: slides,
         });
         await send({
-            content: '📦 Original JPGs (download the ZIP, Discord previews are recompressed and lose the EXIF):',
+            content: '📦 Original JPGs (download the ZIP, Discord previews are recompressed):',
             files: [new AttachmentBuilder(item.zip, { name: path.basename(item.zip) })],
         });
     }
@@ -393,7 +391,7 @@ async function runCleanVideo(interaction, jobDir) {
     const removed = (item.tags_removed || []).slice(0, 15).map((tag) => `\`${tag}\``).join(', ') || 'none';
     await interaction.editReply('✅ Video cleaned.');
     const content = [
-        `🧼 **Clean video** — ${item.duration_before}s → ${item.duration_after}s · 📱 iPhone 15 Pro signature`,
+        `🧼 **Clean video** — ${item.duration_before}s → ${item.duration_after}s`,
         `**Removed tags:** ${removed}`,
         item.variation ? `**Variation:** ${item.variation}` : '',
     ]
