@@ -13,7 +13,8 @@ means the *file you upload* carries no extra identifying baggage and
 looks like a fresh, independent export rather than a duplicate.
 
 Optionally (inject_iphone_signature), the cleaned file can also carry a
-plausible "just recorded on an iPhone 15 Pro" signature (make/model/iOS
+plausible "just recorded on an iPhone" signature (random model between
+iPhone 12 and iPhone 17 Pro Max + make/iOS
 version + a creation date a few minutes ago) instead of empty fields —
 same idea as the visual variation: every export looks like its own
 distinct, freshly-shot clip rather than a stripped/edited file.
@@ -71,12 +72,68 @@ identical crop/color/timing, so they don't look like a copy-paste of each other.
 
 MAX_INPUT_BYTES = 200 * 1024 * 1024  # 200 MB safety cap for processing on the bot host
 
-# "Freshly recorded on iPhone 15 Pro" signature — calibrated against real
-# iPhone 15 Pro / iOS 26.3 exports in samples/ (make/model/software/
+# "Freshly recorded on an iPhone" signature — field shapes calibrated against
+# real iPhone 15 Pro / iOS 26.3 exports in samples/ (make/model/software/
 # creationdate/handlers/encoder/language). GPS intentionally omitted.
+# Each export picks a random device between iPhone 12 and iPhone 17 Pro Max.
 IPHONE_MAKE = "Apple"
-IPHONE_MODEL = "iPhone 15 Pro"
-IPHONE_SOFTWARE = "26.3"
+IPHONE_SOFTWARE_VERSIONS = ("26.1", "26.2", "26.3")
+
+# (focal length mm, f-number, 35mm equivalent); first lens = main camera
+_Lens = tuple[float, float, int]
+
+
+@dataclass(frozen=True)
+class IPhoneProfile:
+    model: str
+    camera: str
+    lenses: tuple[_Lens, ...]
+
+    def lens_models(self) -> list[tuple[str, float, float, int]]:
+        """[(EXIF LensModel, focal, f-number, 35mm eq)] like real Camera.app photos."""
+        return [
+            (f"{self.model} {self.camera} {focal:g}mm f/{fnum:g}", focal, fnum, eq35)
+            for focal, fnum, eq35 in self.lenses
+        ]
+
+
+def _lens(focal: float, fnum: float, eq35: int) -> _Lens:
+    return (focal, fnum, eq35)
+
+
+_DUAL = "back dual wide camera"
+_TRIPLE = "back triple camera"
+
+IPHONE_PROFILES: tuple[IPhoneProfile, ...] = (
+    IPhoneProfile("iPhone 12 mini", _DUAL, (_lens(4.2, 1.6, 26), _lens(1.55, 2.4, 13))),
+    IPhoneProfile("iPhone 12", _DUAL, (_lens(4.2, 1.6, 26), _lens(1.55, 2.4, 13))),
+    IPhoneProfile("iPhone 12 Pro", _TRIPLE, (_lens(4.2, 1.6, 26), _lens(1.54, 2.4, 13), _lens(6.0, 2.0, 52))),
+    IPhoneProfile("iPhone 12 Pro Max", _TRIPLE, (_lens(5.1, 1.6, 26), _lens(1.54, 2.4, 13), _lens(7.5, 2.2, 65))),
+    IPhoneProfile("iPhone 13 mini", _DUAL, (_lens(5.1, 1.6, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 13", _DUAL, (_lens(5.1, 1.6, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 13 Pro", _TRIPLE, (_lens(5.7, 1.5, 26), _lens(1.57, 1.8, 13), _lens(9.0, 2.8, 77))),
+    IPhoneProfile("iPhone 13 Pro Max", _TRIPLE, (_lens(5.7, 1.5, 26), _lens(1.57, 1.8, 13), _lens(9.0, 2.8, 77))),
+    IPhoneProfile("iPhone 14", _DUAL, (_lens(5.7, 1.5, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 14 Plus", _DUAL, (_lens(5.7, 1.5, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 14 Pro", _TRIPLE, (_lens(6.86, 1.78, 24), _lens(2.22, 2.2, 13), _lens(9.0, 2.8, 77))),
+    IPhoneProfile("iPhone 14 Pro Max", _TRIPLE, (_lens(6.86, 1.78, 24), _lens(2.22, 2.2, 13), _lens(9.0, 2.8, 77))),
+    IPhoneProfile("iPhone 15", _DUAL, (_lens(6.0, 1.6, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 15 Plus", _DUAL, (_lens(6.0, 1.6, 26), _lens(1.54, 2.4, 13))),
+    IPhoneProfile("iPhone 15 Pro", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13), _lens(9.03, 2.8, 77))),
+    IPhoneProfile("iPhone 15 Pro Max", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13), _lens(15.66, 2.8, 120))),
+    IPhoneProfile("iPhone 16", _DUAL, (_lens(5.96, 1.6, 26), _lens(2.22, 2.2, 13))),
+    IPhoneProfile("iPhone 16 Plus", _DUAL, (_lens(5.96, 1.6, 26), _lens(2.22, 2.2, 13))),
+    IPhoneProfile("iPhone 16 Pro", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13), _lens(15.66, 2.8, 120))),
+    IPhoneProfile("iPhone 16 Pro Max", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13), _lens(15.66, 2.8, 120))),
+    IPhoneProfile("iPhone 17", _DUAL, (_lens(5.96, 1.6, 26), _lens(2.22, 2.2, 13))),
+    IPhoneProfile("iPhone 17 Pro", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13))),
+    IPhoneProfile("iPhone 17 Pro Max", _TRIPLE, (_lens(6.765, 1.78, 24), _lens(2.22, 2.2, 13))),
+)
+
+
+def pick_iphone(rng: random.Random) -> tuple[IPhoneProfile, str]:
+    """Random device (iPhone 12 … 17 Pro Max) + iOS version for one export."""
+    return rng.choice(IPHONE_PROFILES), rng.choice(IPHONE_SOFTWARE_VERSIONS)
 
 
 class VideoMetadataError(EngineError):
@@ -321,10 +378,12 @@ def _random_variation(rng: random.Random) -> VariationParams:
 
 def _iphone_signature_metadata(rng: random.Random) -> dict[str, str]:
     """
-    Build a plausible "just recorded on an iPhone 15 Pro" metadata set.
+    Build a plausible "just recorded on an iPhone" metadata set (random model
+    between iPhone 12 and iPhone 17 Pro Max, random iOS 26.x).
     Field names/shapes match real Apple Camera .MOV exports (see samples/).
     The recording moment is a few minutes before "now" (export delay).
     """
+    profile, software = pick_iphone(rng)
     now_local = datetime.now().astimezone()
     recorded_local = now_local - timedelta(seconds=rng.uniform(25, 360))
     recorded_utc = recorded_local.astimezone(timezone.utc)
@@ -336,8 +395,8 @@ def _iphone_signature_metadata(rng: random.Random) -> dict[str, str]:
         "creation_time": recorded_utc.strftime("%Y-%m-%dT%H:%M:%S.000000Z"),
         "com.apple.quicktime.creationdate": creationdate,
         "com.apple.quicktime.make": IPHONE_MAKE,
-        "com.apple.quicktime.model": IPHONE_MODEL,
-        "com.apple.quicktime.software": IPHONE_SOFTWARE,
+        "com.apple.quicktime.model": profile.model,
+        "com.apple.quicktime.software": software,
         # Present on every real sample we probed; always 0 for normal clips.
         "com.apple.quicktime.full-frame-rate-playback-intent": "0",
         "major_brand": "qt  ",
@@ -519,7 +578,7 @@ def inject_iphone_signature(
 ) -> Path:
     """
     Fast stream-copy remux (no re-encode) that writes a plausible "just
-    recorded on an iPhone 15 Pro, iOS 26.3" signature onto an already-clean
+    recorded on an iPhone (12 … 17 Pro Max), iOS 26.x" signature onto an already-clean
     video: make/model/software + a creation date a few minutes ago.
 
     Output is .mov — the container real iPhone recordings actually use,

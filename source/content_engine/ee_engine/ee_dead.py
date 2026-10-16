@@ -47,6 +47,7 @@ from .ee_best_business import (
 from .ee_carousel import CarouselResult, _engine
 from .ee_steps import draw_pill
 from .image_metadata import save_as_iphone_photo
+from .video_metadata import pick_iphone
 
 PACK = "dead"
 PLACEHOLDER = (16, 16, 18)
@@ -206,6 +207,7 @@ def export_carousel(rendered: list[Image.Image], out_dir: Path, rng: random.Rand
     work.mkdir(parents=True, exist_ok=True)
     taken_at = datetime.now().astimezone() - timedelta(minutes=rng.uniform(3, 25))
     first_number = rng.randint(1000, 9990 - len(rendered))
+    device = pick_iphone(rng)
     slides: list[Path] = []
     for index, image in enumerate(rendered):
         slides.append(
@@ -215,6 +217,7 @@ def export_carousel(rendered: list[Image.Image], out_dir: Path, rng: random.Rand
                 rng=rng,
                 taken_at=taken_at + timedelta(seconds=index * rng.uniform(4, 14)),
                 file_number=first_number + index,
+                device=device,
             )
         )
 

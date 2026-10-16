@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from . import ENGINE_ROOT
 from .ffmpeg_tools import EngineError
 from .image_metadata import save_as_iphone_photo
+from .video_metadata import pick_iphone
 
 CAPTIONS_FILE = ENGINE_ROOT / "carousel" / "ee_carousel_captions.txt"
 LOGOS_DIR = ENGINE_ROOT / "variator" / "assets"
@@ -224,6 +225,7 @@ def build_ee_carousel(
 
     taken_at = datetime.now().astimezone() - timedelta(minutes=rng.uniform(3, 25))
     first_number = rng.randint(1000, 9990 - len(rendered))
+    device = pick_iphone(rng)
     slides: list[Path] = []
     for index, image in enumerate(rendered):
         slides.append(
@@ -233,6 +235,7 @@ def build_ee_carousel(
                 rng=rng,
                 taken_at=taken_at + timedelta(seconds=index * rng.uniform(4, 14)),
                 file_number=first_number + index,
+                device=device,
             )
         )
 

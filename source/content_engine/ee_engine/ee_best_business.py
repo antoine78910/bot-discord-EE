@@ -28,6 +28,7 @@ from .ee_carousel import CAPTIONS_FILE, CarouselResult, _engine
 from .ee_steps import draw_pill, pill_height
 from .ffmpeg_tools import EngineError
 from .image_metadata import save_as_iphone_photo
+from .video_metadata import pick_iphone
 
 PHOTOS_DIR_NAME = "photos"
 BUSINESS_PACK = "business_class"
@@ -284,6 +285,7 @@ def build_best_business_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
     work.mkdir(parents=True, exist_ok=True)
     taken_at = datetime.now().astimezone() - timedelta(minutes=rng.uniform(3, 25))
     first_number = rng.randint(1000, 9990 - len(slides_img))
+    device = pick_iphone(rng)
     slides: list[Path] = []
     for index, image in enumerate(slides_img):
         slides.append(
@@ -293,6 +295,7 @@ def build_best_business_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
                 rng=rng,
                 taken_at=taken_at + timedelta(seconds=index * rng.uniform(4, 14)),
                 file_number=first_number + index,
+                device=device,
             )
         )
 

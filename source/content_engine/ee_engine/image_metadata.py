@@ -1,4 +1,4 @@
-"""Save images as fresh iPhone 15 Pro photos (clean JPEG + plausible EXIF)."""
+"""Save images as fresh iPhone photos (random iPhone 12 … 17 Pro Max, clean JPEG + plausible EXIF)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from pathlib import Path
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
-from .video_metadata import IPHONE_MAKE, IPHONE_MODEL, IPHONE_SOFTWARE
+from .uniqueness import vary_image
+from .video_metadata import IPHONE_MAKE, IPhoneProfile, pick_iphone
 
 _EXIF_IFD = 0x8769
 _TAG_MAKE = 0x010F
@@ -33,30 +34,29 @@ _TAG_FOCAL_LENGTH_35MM = 0xA405
 _TAG_LENS_MAKE = 0xA433
 _TAG_LENS_MODEL = 0xA434
 
-_LENSES = (
-    ("iPhone 15 Pro back triple camera 6.765mm f/1.78", 6.765, 1.78, 24),
-    ("iPhone 15 Pro back triple camera 2.22mm f/2.2", 2.22, 2.2, 13),
-    ("iPhone 15 Pro back triple camera 9.03mm f/2.8", 9.03, 2.8, 77),
-)
-
-
 def _offset(dt: datetime) -> str:
     raw = dt.strftime("%z") or "+0000"
     return f"{raw[:3]}:{raw[3:]}"
 
 
-def iphone_exif(rng: random.Random, taken_at: datetime) -> Image.Exif:
-    lens_model, focal, fnumber, focal_35 = rng.choice(_LENSES)
+def iphone_exif(
+    rng: random.Random, taken_at: datetime, device: tuple[IPhoneProfile, str] | None = None
+) -> Image.Exif:
+    profile, software = device or pick_iphone(rng)
+    lenses = profile.lens_models()
+    main_weight = 0.75 if len(lenses) > 1 else 1.0
+    weights = [main_weight] + [(1 - main_weight) / max(1, len(lenses) - 1)] * (len(lenses) - 1)
+    lens_model, focal, fnumber, focal_35 = rng.choices(lenses, weights=weights, k=1)[0]
     stamp = taken_at.strftime("%Y:%m:%d %H:%M:%S")
     offset = _offset(taken_at)
 
     exif = Image.Exif()
     exif[_TAG_MAKE] = IPHONE_MAKE
-    exif[_TAG_MODEL] = IPHONE_MODEL
+    exif[_TAG_MODEL] = profile.model
     exif[_TAG_ORIENTATION] = 1
-    exif[_TAG_SOFTWARE] = IPHONE_SOFTWARE
+    exif[_TAG_SOFTWARE] = software
     exif[_TAG_DATETIME] = stamp
-    exif[_TAG_HOST_COMPUTER] = IPHONE_MODEL
+    exif[_TAG_HOST_COMPUTER] = profile.model
 
     ifd = exif.get_ifd(_EXIF_IFD)
     ifd[_TAG_EXPOSURE_TIME] = IFDRational(1, rng.choice([60, 100, 120, 125, 200, 250]))
@@ -83,8 +83,13 @@ def save_as_iphone_photo(
     rng: random.Random,
     taken_at: datetime | None = None,
     file_number: int | None = None,
+    device: tuple[IPhoneProfile, str] | None = None,
 ) -> Path:
-    """Write image as IMG_####.JPG with only iPhone EXIF (no other metadata carried over)."""
+    """
+    Write image as IMG_####.JPG with only iPhone EXIF (no other metadata carried over),
+    after subtle color / axis / grain variation. Pass the same `device` (pick_iphone)
+    for every slide of one carousel so they share a phone model.
+    """
     if taken_at is None:
         taken_at = datetime.now().astimezone() - timedelta(seconds=rng.uniform(40, 900))
     if file_number is None:
@@ -93,12 +98,12 @@ def save_as_iphone_photo(
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / f"IMG_{file_number:04d}.JPG"
     clean = Image.new("RGB", image.size)
-    clean.paste(image.convert("RGB"))
+    clean.paste(vary_image(image, rng))
     clean.save(
         path,
         "JPEG",
         quality=95,
         subsampling=0,
-        exif=iphone_exif(rng, taken_at).tobytes(),
+        exif=iphone_exif(rng, taken_at, device).tobytes(),
     )
     return path

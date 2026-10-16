@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
@@ -78,6 +79,10 @@ class ClipRecipe:
     contrast: float
     end_trim_sec: float
     text_position: str
+    hue_deg: float = 0.0
+    gamma: float = 1.0
+    grain: float = 0.0
+    grain_seed: int = 1
 
 
 class ClipAssemblyError(Exception):
@@ -308,19 +313,27 @@ def _random_recipe(rng: random.Random) -> ClipRecipe:
     except OSError:
         pass
 
+    rotation_deg = rng.uniform(-0.5, 0.5)
+    rot = math.radians(abs(rotation_deg))
+    # Zoom at least enough that the rotated frame leaves no black corners.
+    cover = math.cos(rot) + math.sin(rot) * OUTPUT_HEIGHT / OUTPUT_WIDTH
     return ClipRecipe(
         hook=hook,
         body=body,
         music=music,
         text_hook=text_hook,
         text_category=text_category,
-        scale=rng.uniform(1.0, 1.05),
-        rotation_deg=rng.uniform(-0.5, 0.5),
+        scale=max(rng.uniform(1.0, 1.05), cover + 0.003),
+        rotation_deg=rotation_deg,
         saturation=rng.uniform(0.92, 1.1),
         brightness=rng.uniform(-0.04, 0.04),
         contrast=rng.uniform(0.94, 1.06),
         end_trim_sec=rng.uniform(0.08, 0.25),
         text_position="mid",
+        hue_deg=rng.uniform(-4.0, 4.0),
+        gamma=rng.uniform(0.97, 1.03),
+        grain=rng.uniform(1.0, 2.2),
+        grain_seed=rng.randint(1, 2**30),
     )
 
 
@@ -596,7 +609,9 @@ def _render_clip(recipe: ClipRecipe, dest: Path) -> None:
         f"contrast={recipe.contrast},"
         f"rotate={rot_rad}:fillcolor=black@0:ow=iw:oh=ih,"
         f"scale=iw*{recipe.scale}:ih*{recipe.scale},"
-        f"crop={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}"
+        f"crop={OUTPUT_WIDTH}:{OUTPUT_HEIGHT},"
+        f"hue=h={recipe.hue_deg:.2f},eq=gamma={recipe.gamma:.3f},"
+        f"noise=all_seed={recipe.grain_seed}:alls={recipe.grain:.2f}:allf=u"
     )
 
     inputs = ["-i", str(recipe.hook), "-i", str(recipe.body), "-i", str(recipe.music)]

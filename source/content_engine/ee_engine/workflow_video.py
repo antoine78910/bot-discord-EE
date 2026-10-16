@@ -47,6 +47,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from .ffmpeg_tools import EngineError, has_audio_stream, probe_duration, run_ffmpeg
+from .uniqueness import cover_scale, video_variation_filter
 from .videos import SILENT_DETAIL, VideoResult, _finalize, silent_turn
 
 ROOT = Path(__file__).resolve().parents[1] / "workflow"
@@ -418,13 +419,14 @@ def _render(
     filters = [f"[{i}:v]{scale_crop}[v{i}]" for i in range(len(sources))]
     filters.append(f"{''.join(f'[v{i}]' for i in range(len(sources)))}concat=n={len(sources)}:v=1:a=0[vcat]")
 
-    scale = rng.uniform(1.0, 1.05)
     rotation = rng.uniform(-0.5, 0.5) * 3.14159265 / 180.0
+    scale = max(rng.uniform(1.0, 1.05), cover_scale(WIDTH, HEIGHT, rotation) + 0.003)
     filters.append(
         f"[vcat]eq=saturation={rng.uniform(0.92, 1.1):.3f}:brightness={rng.uniform(-0.04, 0.04):.3f}:"
         f"contrast={rng.uniform(0.94, 1.06):.3f},"
         f"rotate={rotation:.5f}:fillcolor=black@0:ow=iw:oh=ih,"
-        f"scale=iw*{scale:.4f}:ih*{scale:.4f},crop={WIDTH}:{HEIGHT}[vbase]"
+        f"scale=iw*{scale:.4f}:ih*{scale:.4f},crop={WIDTH}:{HEIGHT},"
+        f"{video_variation_filter(rng)}[vbase]"
     )
 
     video_out = "[vbase]"

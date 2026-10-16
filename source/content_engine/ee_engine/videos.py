@@ -1,12 +1,13 @@
 """
 Two independent video generators, each running its original pipeline untouched:
 
-  variator  Variator generate.py: variation image (template + app logos) -> 6 s video
-            with fade + music -> caption banner overlay (same as `generate.py` main + run_captions).
+  variator  Variator generate.py: variation image (template + app logos, plus subtle
+            color / axis / grain variation) -> 6 s video with fade + music -> caption
+            banner overlay (same as `generate.py` main + run_captions).
   youry     YouRy clip_assembler.assemble_clip: hook + body + music + text hook + variations.
 
-Only post-processing is added: Discord size cap and the iPhone 15 Pro .MOV signature
-(stream-copy remux, pixels/audio unchanged).
+Post-processing: Discord size cap and an iPhone .MOV signature (random iPhone 12 …
+17 Pro Max, stream-copy remux, pixels/audio unchanged).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 from PIL import Image
 
 from .ffmpeg_tools import EngineError, compress_to_size, probe_duration, run_ffmpeg
+from .uniqueness import vary_image
 from .video_metadata import inject_iphone_signature
 
 SILENT_DETAIL = "**Sound:** none, add the TikTok / Instagram suggested song for the video"
@@ -137,7 +139,7 @@ def render_variator_video(
         variation_idx = random.randint(0, 3)
         font = vg.get_title_font(max(20, int(th * vg.FONT_SIZE_RATIO)), variation_idx)
         image_path = work / "variation.png"
-        vg.render_image(template, lines, font, step_images, variation_idx).save(image_path)
+        vary_image(vg.render_image(template, lines, font, step_images, variation_idx), rng).save(image_path)
 
         tracks = vg.get_audio_paths()
         audio = random.choice(tracks) if tracks else None
