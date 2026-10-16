@@ -112,7 +112,7 @@ function templates(link) {
                     '',
                     `Register your accounts and enter payout details at ${link('apply')}`,
                     '',
-                    `Warm up your accounts for 3 days ${link('warmup')}`,
+                    `Warm up your accounts for 4 days ${link('warmup')}`,
                     '',
                     `Set up ${link('dm_automation')}`,
                     '',
