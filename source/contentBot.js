@@ -25,6 +25,7 @@ const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = requir
 const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
 const { startFileServer } = require('./contentFiles');
 const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
+const { startPaymentProofs } = require('./paymentProofs');
 const {
     handleCreatorInteraction,
     publishCreatorChannels,
@@ -75,6 +76,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     await syncRegistrationLog(readyClient).catch((error) => {
         console.warn('[CREATOR] registration sync failed:', error?.message || error);
     });
+    startPaymentProofs(readyClient);
 });
 
 client.on(Events.GuildCreate, () => {
