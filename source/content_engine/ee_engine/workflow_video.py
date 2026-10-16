@@ -377,8 +377,12 @@ def _render(
     captions: list[Path | None],
     output: Path,
     rng: random.Random,
+    cta: Path | None = None,
 ) -> None:
-    """Hook + muted body clips (except keep_audio) + captions + music, with light visual variation."""
+    """Hook + muted body clips (except keep_audio) + captions + music, with light visual variation.
+
+    The last clip shows its caption on the first half and the centered CTA on the second half.
+    """
     scale_crop = (
         f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
         f"crop={WIDTH}:{HEIGHT},fps={FPS},setsar=1,format=yuv420p"
@@ -431,16 +435,26 @@ def _render(
     ):
         if keep_audio and has_audio_stream(clip):
             kept.append((index, offset, duration))
+        end = offset + duration
+        split = offset + duration / 2 if cta is not None and index == len(clips) else end
         if caption is not None:
             args += ["-i", str(caption)]
             label = f"[cap{index}]"
             filters.append(
                 f"{video_out}[{next_input}:v]overlay=x=(main_w-overlay_w)/2:y={CAPTION_Y_BY_STEP.get(key, CAPTION_Y)}:"
-                f"enable='between(t,{offset:.3f},{offset + duration:.3f})'{label}"
+                f"enable='between(t,{offset:.3f},{split:.3f})'{label}"
             )
             video_out = label
             next_input += 1
-        offset += duration
+        if split < end:
+            args += ["-i", str(cta)]
+            filters.append(
+                f"{video_out}[{next_input}:v]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2:"
+                f"enable='between(t,{split:.3f},{end:.3f})'[cta]"
+            )
+            video_out = "[cta]"
+            next_input += 1
+        offset = end
 
     filters.append(
         f"[{music_index}:a]aresample=44100,aformat=channel_layouts=stereo,"
@@ -497,8 +511,11 @@ def render_workflow_video(
             _caption_png(text, work / f"caption_{index}.png") if text else None
             for index, text in enumerate(texts)
         ]
+        cta_options = load_captions().get("cta") or []
+        cta_text = rng.choice(cta_options) if cta_options else None
+        cta = _caption_png(cta_text, work / "cta.png") if cta_text else None
         rendered = work / "workflow.mp4"
-        _render(pick, clips, captions, rendered, rng)
+        _render(pick, clips, captions, rendered, rng, cta)
         duration = probe_duration(rendered)
         silent = silent_turn("workflow", every=4)
         final = _finalize(
@@ -513,6 +530,8 @@ def render_workflow_video(
                 f"`{i}` **{key}** · {clip.stem}{sound} · {probe_duration(clip):.1f}s"
                 + (f" · “{caption}”" if caption else " · no caption")
             )
+        if cta_text and clips:
+            scenes[-1] += f" → CTA “{cta_text}”"
         return VideoResult(
             kind="workflow",
             path=final,

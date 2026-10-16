@@ -1,5 +1,5 @@
 {
-  "_help": "On-screen caption per workflow step (key = clip name from workflows.json). The final clip (katching or result) always uses the result texts. One variant is drawn at random per video; the same text is never used twice in one video. Remove a key or leave [] for no caption.",
+  "_help": "On-screen caption per workflow step (key = clip name from workflows.json). The final clip (katching or result) always uses the result texts on its first half and a cta text, centered, on its second half. One variant is drawn at random per video; the same text is never used twice in one video. Remove a key or leave [] for no caption.",
 
   "tiktok": [
     "Get over to TikTok",
@@ -151,5 +151,11 @@
     "Make sh*t ton of money 💰",
     "Thank me later 🤑",
     "You can thank me later 🤑"
+  ],
+  "cta": [
+    "Comment \"AI\" for the full guide",
+    "Comment \"Ecom\" for the full workflow",
+    "Comment \"AI\" to get the full workflow",
+    "Comment \"Ecom\" for the full guide"
   ]
 }
