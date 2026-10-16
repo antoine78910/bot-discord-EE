@@ -56,6 +56,7 @@ WORKFLOWS_FILE = ROOT / "workflows.json"
 CAPTIONS_FILE = ROOT / "captions.json"
 HOOKS_TEXT_DIR = ROOT / "hooks_text"
 HOOK_VIDEOS_DIR = ROOT / "hook videos"
+MUSIC_DIR = ROOT / "music"
 CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-Bold.ttf"
 CAPTION_SIZE = 74
 CAPTION_STROKE = 5
@@ -339,21 +340,30 @@ def _youry():
 
 
 def _pick_hook(rng: random.Random) -> HookPick:
-    """YouRy hook videos plus the workflow's own, YouRy music, workflow text hooks."""
+    """YouRy hook videos plus the workflow's own, workflow music (else YouRy's), workflow text hooks."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
     hooks = ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT)
     if HOOK_VIDEOS_DIR.is_dir():
         hooks += ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT)
-    tracks = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT)
+    tracks: list[Path] = []
+    if MUSIC_DIR.is_dir():
+        tracks = [
+            path
+            for path in ca._list_usable_files(MUSIC_DIR, ca.AUDIO_EXT | ca.VIDEO_EXT)
+            if path.suffix.lower() in ca.AUDIO_EXT or has_audio_stream(path)
+        ]
+    music_key = "workflow_music"
+    if not tracks:
+        tracks, music_key = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT), "music"
     if not hooks:
         raise EngineError(f"No hook videos in {ca.hooks_dir()}.")
     if not tracks:
-        raise EngineError(f"No music in {ca.music_dir()}.")
+        raise EngineError(f"No music in {MUSIC_DIR} or {ca.music_dir()}.")
     recent = ca._load_recent()
     picked_text = ca._pick_fresh(rng, text_hooks, "workflow_text_hooks", recent)
     hook = ca._pick_fresh(rng, hooks, "workflow_hooks", recent)
-    music = ca._pick_fresh(rng, tracks, "music", recent)
+    music = ca._pick_fresh(rng, tracks, music_key, recent)
     try:
         ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
     except OSError:
