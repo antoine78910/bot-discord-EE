@@ -500,7 +500,7 @@ def render_workflow_video(
         rendered = work / "workflow.mp4"
         _render(pick, clips, captions, rendered, rng)
         duration = probe_duration(rendered)
-        silent = silent_turn("workflow")
+        silent = silent_turn("workflow", every=4)
         final = _finalize(
             rendered, out_dir, rng=rng, max_bytes=max_bytes, iphone_signature=iphone_signature, silent=silent
         )

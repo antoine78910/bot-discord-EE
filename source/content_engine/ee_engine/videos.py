@@ -22,7 +22,7 @@ from PIL import Image
 from .ffmpeg_tools import EngineError, compress_to_size, probe_duration, run_ffmpeg
 from .video_metadata import inject_iphone_signature
 
-SILENT_DETAIL = "**Sound:** none, add a trending sound on TikTok / Instagram"
+SILENT_DETAIL = "**Sound:** none, add the TikTok / Instagram suggested song for the video"
 
 
 @dataclass
@@ -64,15 +64,15 @@ def pick_captions(count: int) -> list[str]:
     return random.choices(texts, weights=weights, k=count)
 
 
-def silent_turn(kind: str) -> bool:
-    """Every other video of each kind ships without an audio track (persisted across runs)."""
+def silent_turn(kind: str, every: int = 2) -> bool:
+    """One video in `every` of each kind ships without an audio track (counter persisted across runs)."""
     ca = _youry()
     recent = ca._load_recent()
-    key = f"silent_turn:{kind}"
-    silent = bool(recent.get(key, False))
-    recent[key] = not silent
+    key = f"silent_count:{kind}"
+    count = int(recent.get(key, 0))
+    recent[key] = count + 1
     ca.save_recent(recent)
-    return silent
+    return count % every == every - 1
 
 
 def _strip_audio(path: Path) -> Path:
