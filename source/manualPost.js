@@ -1,6 +1,7 @@
 /**
  * Staff-only manual posting as the bot:
- *   /post-proof   post an uploaded payment proof, or the next one from the folder (restarts the 2-day countdown)
+ *   /post-proof   post up to 10 uploaded payment proofs in slot order, or the next one from the folder
+ *                 (restarts the 2-day countdown)
  *   /say          post a message and/or an image in any text channel
  */
 const { AttachmentBuilder, ChannelType, MessageFlags, SlashCommandBuilder } = require('discord.js');
@@ -9,15 +10,19 @@ const { postNextProof, postProofImage } = require('./paymentProofs');
 
 const POST_PROOF_COMMAND = 'post-proof';
 const SAY_COMMAND = 'say';
+const PROOF_SLOTS = Array.from({ length: 10 }, (_, i) => `image${i + 1}`);
 
 function getManualPostCommands() {
     return [
-        new SlashCommandBuilder()
-            .setName(POST_PROOF_COMMAND)
-            .setDescription('Staff: post a payment proof now (upload one, or the next from the folder).')
-            .addAttachmentOption((option) =>
-                option.setName('image').setDescription('Payment proof screenshot to post')
-            ),
+        PROOF_SLOTS.reduce(
+            (command, slot) =>
+                command.addAttachmentOption((option) =>
+                    option.setName(slot).setDescription(`Payment proof #${slot.slice(5)} (posted in this order)`)
+                ),
+            new SlashCommandBuilder()
+                .setName(POST_PROOF_COMMAND)
+                .setDescription('Staff: post payment proofs now (upload up to 10, or the next from the folder).')
+        ),
         new SlashCommandBuilder()
             .setName(SAY_COMMAND)
             .setDescription('Staff: send a message as the bot.')
@@ -36,15 +41,16 @@ function getManualPostCommands() {
 }
 
 async function handlePostProof(interaction) {
-    const upload = interaction.options.getAttachment('image');
-    if (upload && !String(upload.contentType || '').startsWith('image/')) {
-        await interaction.reply({ content: 'Upload an image (PNG, JPG or WebP).', flags: MessageFlags.Ephemeral });
+    const uploads = PROOF_SLOTS.map((slot) => interaction.options.getAttachment(slot)).filter(Boolean);
+    if (uploads.some((upload) => !String(upload.contentType || '').startsWith('image/'))) {
+        await interaction.reply({ content: 'Upload images only (PNG, JPG or WebP).', flags: MessageFlags.Ephemeral });
         return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (upload) {
-        const channel = await postProofImage(interaction.client, upload.url, upload.name);
-        await interaction.editReply(`✅ Payment proof posted in ${channel}.`);
+    if (uploads.length) {
+        let channel = null;
+        for (const upload of uploads) channel = await postProofImage(interaction.client, upload.url, upload.name);
+        await interaction.editReply(`✅ ${uploads.length} payment proof(s) posted in ${channel}, in order.`);
         return;
     }
     const result = await postNextProof(interaction.client, { force: true });
