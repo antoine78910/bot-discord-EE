@@ -26,6 +26,7 @@ const { handlePanelInteraction, publishContentPanel } = require('./contentPanel'
 const { startFileServer } = require('./contentFiles');
 const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
 const { startPaymentProofs } = require('./paymentProofs');
+const { getManualPostCommands, handleManualPostCommand } = require('./manualPost');
 const {
     handleCreatorInteraction,
     publishCreatorChannels,
@@ -47,14 +48,18 @@ startFileServer();
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 async function registerCommands() {
-    const commands = [getContentSlashCommand().toJSON(), getUsernameSlashCommand().toJSON()];
+    const commands = [
+        getContentSlashCommand().toJSON(),
+        getUsernameSlashCommand().toJSON(),
+        ...getManualPostCommands().map((command) => command.toJSON()),
+    ];
     const joined = [...client.guilds.cache.values()];
     console.log(`[CONTENT-BOT] In ${joined.length} server(s): ${joined.map((g) => `${g.name} (${g.id})`).join(', ') || 'none'}`);
     for (const guildId of joined.map((g) => g.id)) {
         try {
             const guild = await client.guilds.fetch(guildId);
             await guild.commands.set(commands);
-            console.log(`[CONTENT-BOT] /${CONTENT_COMMAND} and /${USERNAME_COMMAND} registered on ${guild.name}`);
+            console.log(`[CONTENT-BOT] ${commands.map((c) => `/${c.name}`).join(', ')} registered on ${guild.name}`);
         } catch (error) {
             console.warn(`[CONTENT-BOT] Could not register on guild ${guildId}:`, error?.message || error);
         }
@@ -93,6 +98,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleUsernameCommand(interaction);
             return;
         }
+        if (await handleManualPostCommand(interaction)) return;
         if (await handlePayoutInteraction(interaction)) return;
         if (await handleCreatorInteraction(interaction)) return;
         await handlePanelInteraction(interaction);

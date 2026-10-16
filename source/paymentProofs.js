@@ -43,22 +43,25 @@ function listProofs() {
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-async function postNextProof(client) {
+/**
+ * Posts the next unposted proof. Without `force` it waits for the interval; a forced post
+ * restarts the 2-day countdown. Returns { name, channel, remaining } or null when nothing was posted.
+ */
+async function postNextProof(client, { force = false } = {}) {
     const state = loadState();
-    if (Date.now() - state.lastPostedAt < INTERVAL_MS) return;
-    const next = listProofs().find((name) => !state.posted.includes(name));
-    if (!next) return;
+    if (!force && Date.now() - state.lastPostedAt < INTERVAL_MS) return null;
+    const pending = listProofs().filter((name) => !state.posted.includes(name));
+    if (!pending.length) return null;
+    const next = pending[0];
 
     const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
-    if (!channel?.isTextBased()) {
-        console.warn(`[PAYMENT-PROOF] Channel ${CHANNEL_ID} not found or not a text channel.`);
-        return;
-    }
+    if (!channel?.isTextBased()) throw new Error(`Channel ${CHANNEL_ID} not found or not a text channel.`);
     await channel.send({ files: [new AttachmentBuilder(path.join(PROOFS_DIR, next), { name: `proof${path.extname(next).toLowerCase()}` })] });
     state.posted.push(next);
     state.lastPostedAt = Date.now();
     saveState(state);
     console.log(`[PAYMENT-PROOF] Posted ${next} in #${channel.name} (${state.posted.length} posted so far)`);
+    return { name: next, channel, remaining: pending.length - 1 };
 }
 
 function startPaymentProofs(client) {
@@ -72,4 +75,4 @@ function startPaymentProofs(client) {
     setInterval(tick, CHECK_EVERY_MS);
 }
 
-module.exports = { startPaymentProofs };
+module.exports = { startPaymentProofs, postNextProof };
