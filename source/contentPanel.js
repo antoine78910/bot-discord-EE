@@ -48,10 +48,10 @@ const CAROUSEL_EMOJI = '🖼️';
 const KINDS = {
     variator: { label: 'app demo video', button: 'App demo video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     youry: { label: 'hook video', button: 'Hook video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
-    workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success, staffOnly: true },
+    workflow: { label: 'workflow video', button: 'Workflow video', emoji: VIDEO_EMOJI, style: ButtonStyle.Success },
     bestbiz: { label: 'best business carousel', button: 'Best business', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     dead: { label: 'dropshipping is dead carousel', button: 'Is dead', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
-    deadframes: { label: 'is dead carousel (video frames)', button: 'Is dead (frames)', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary, staffOnly: true, soon: true },
+    deadframes: { label: 'workflow carousel', button: 'Workflow', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
     steps: { label: '5 steps carousel', button: '5 steps', emoji: CAROUSEL_EMOJI, style: ButtonStyle.Primary },
 };
 
@@ -66,11 +66,12 @@ function panelEmbed() {
                 '**Videos**',
                 '🎥 **App demo video**: caption banner + template with the app steps + trending sound',
                 '🎥 **Hook video**: hook + body + music + text hook, random variations',
+                '🎥 **Workflow video**: hook + the full AI dropshipping workflow (product research, store, ads, sales) with captions',
                 '',
                 '**Carousels**',
                 '🖼️ **Best business**: 5 slides, stroke text — Dropshipping / Trading / Affiliate, then AI Dropshipping',
                 '🖼️ **Is dead**: 10 slides — result, Kalodata, AliExpress, DropMagic, Youry, UGC, Insta, result',
-                '🖼️ **Is dead (frames)**: same 10 slides built from real workflow screen recordings, unlimited variations · *Soon*',
+                '🖼️ **Workflow**: 10 slides built from real workflow screen recordings, unlimited variations',
                 '🖼️ **5 steps**: hook, 5 steps with logos, then follow and comment',
                 '',
                 'Pick 1 to 5 at once. Every export is unique and carries iPhone 15 Pro metadata.',

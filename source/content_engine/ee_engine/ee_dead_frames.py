@@ -208,5 +208,5 @@ def build_dead_frames_carousel(out_dir: Path, *, seed: int) -> CarouselResult:
         shutil.rmtree(work, ignore_errors=True)
 
     result = export_carousel(rendered, out_dir, rng, style="dead-frames")
-    result.hook_preview = f"Dropshipping is dead · {product} · {branch} · " + ", ".join(c.stem for c in clips)
+    result.hook_preview = f"Workflow · {product} · {branch} · " + ", ".join(c.stem for c in clips)
     return result
