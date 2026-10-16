@@ -58,7 +58,8 @@ function submissionEmbed() {
             'Submit your account analytics by clicking the button below.\n\n' +
                 'A private ticket channel will open just between you and the admins. ' +
                 'Drop your view counts, video links, and screenshots there — ' +
-                'payouts process within 48 hours.'
+                'payouts process within 48 hours.\n\n' +
+                '**Minimum to request a payout:** $10 earned or 10k views.'
         );
 }
 
@@ -73,6 +74,7 @@ function ticketEmbed(user, ticketId) {
                 '2. Period covered (e.g. Oct 1–15, 2026)\n' +
                 '3. Total views generated across all posts\n' +
                 '4. Screen recording of your account analytics\n\n' +
+                '**Minimum to request a payout:** $10 earned or 10k views.\n\n' +
                 "We'll verify and process within **48 hours**. " +
                 "You'll get a DM the moment your payout is sent."
         )
