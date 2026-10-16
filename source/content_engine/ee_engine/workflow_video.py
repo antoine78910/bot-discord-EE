@@ -331,6 +331,7 @@ class HookPick:
     hook: Path
     text_hook: Path | None
     music: Path
+    keep_audio: bool = False
 
 
 def _youry():
@@ -376,7 +377,12 @@ def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPic
         ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
     except OSError:
         pass
-    return HookPick(hook=hook, text_hook=picked_text[0] if picked_text else None, music=music)
+    return HookPick(
+        hook=hook,
+        text_hook=picked_text[0] if picked_text else None,
+        music=music,
+        keep_audio=group == "katching",
+    )
 
 
 def _render(
@@ -439,6 +445,8 @@ def _render(
         video_out = "[vout]"
 
     kept: list[tuple[int, float, float]] = []
+    if pick.keep_audio and has_audio_stream(pick.hook):
+        kept.append((0, 0.0, durations[0]))
     offset = durations[0]
     for index, ((clip, keep_audio, key), duration, caption) in enumerate(
         zip(clips, durations[1:], captions), start=1
@@ -525,7 +533,9 @@ def render_workflow_video(
         cta_text = rng.choice(cta_options) if cta_options else None
         cta = _caption_png(cta_text, work / "cta.png") if cta_text else None
         silent = silent_turn("workflow", every=4)
-        has_clip_sound = any(keep and has_audio_stream(clip) for clip, keep, _ in clips)
+        has_clip_sound = any(
+            keep and has_audio_stream(clip) for clip, keep, _ in [(pick.hook, pick.keep_audio, "hook"), *clips]
+        )
         rendered = work / "workflow.mp4"
         _render(pick, clips, captions, rendered, rng, cta, with_music=not silent)
         duration = probe_duration(rendered)
@@ -539,7 +549,8 @@ def render_workflow_video(
         )
         music = "none" if silent else pick.music.stem
         text = pick.text_hook.stem if pick.text_hook else "none"
-        scenes = [f"`0` hook · {pick.hook.stem} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
+        hook_sound = " 🔊" if pick.keep_audio else ""
+        scenes = [f"`0` hook · {pick.hook.stem}{hook_sound} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
         for i, ((clip, keep, key), caption) in enumerate(zip(clips, texts), start=1):
             sound = " 🔊" if keep else ""
             scenes.append(
