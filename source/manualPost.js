@@ -1,11 +1,11 @@
 /**
  * Staff-only manual posting as the bot:
- *   /post-proof   post the next payment proof now (restarts the 2-day countdown)
+ *   /post-proof   post an uploaded payment proof, or the next one from the folder (restarts the 2-day countdown)
  *   /say          post a message and/or an image in any text channel
  */
 const { AttachmentBuilder, ChannelType, MessageFlags, SlashCommandBuilder } = require('discord.js');
 const { isStaff } = require('./contentStudio');
-const { postNextProof } = require('./paymentProofs');
+const { postNextProof, postProofImage } = require('./paymentProofs');
 
 const POST_PROOF_COMMAND = 'post-proof';
 const SAY_COMMAND = 'say';
@@ -14,7 +14,10 @@ function getManualPostCommands() {
     return [
         new SlashCommandBuilder()
             .setName(POST_PROOF_COMMAND)
-            .setDescription('Staff: post the next payment proof now.'),
+            .setDescription('Staff: post a payment proof now (upload one, or the next from the folder).')
+            .addAttachmentOption((option) =>
+                option.setName('image').setDescription('Payment proof screenshot to post')
+            ),
         new SlashCommandBuilder()
             .setName(SAY_COMMAND)
             .setDescription('Staff: send a message as the bot.')
@@ -33,7 +36,17 @@ function getManualPostCommands() {
 }
 
 async function handlePostProof(interaction) {
+    const upload = interaction.options.getAttachment('image');
+    if (upload && !String(upload.contentType || '').startsWith('image/')) {
+        await interaction.reply({ content: 'Upload an image (PNG, JPG or WebP).', flags: MessageFlags.Ephemeral });
+        return;
+    }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (upload) {
+        const channel = await postProofImage(interaction.client, upload.url, upload.name);
+        await interaction.editReply(`✅ Payment proof posted in ${channel}.`);
+        return;
+    }
     const result = await postNextProof(interaction.client, { force: true });
     await interaction.editReply(
         result

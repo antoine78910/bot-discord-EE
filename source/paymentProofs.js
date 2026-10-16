@@ -64,6 +64,18 @@ async function postNextProof(client, { force = false } = {}) {
     return { name: next, channel, remaining: pending.length - 1 };
 }
 
+/** Posts an uploaded image as a payment proof; the 2-day countdown for folder proofs restarts. */
+async function postProofImage(client, url, name) {
+    const channel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased()) throw new Error(`Channel ${CHANNEL_ID} not found or not a text channel.`);
+    await channel.send({ files: [new AttachmentBuilder(url, { name: `proof${path.extname(name || '.png').toLowerCase()}` })] });
+    const state = loadState();
+    state.lastPostedAt = Date.now();
+    saveState(state);
+    console.log(`[PAYMENT-PROOF] Posted uploaded proof in #${channel.name}`);
+    return channel;
+}
+
 function startPaymentProofs(client) {
     const tick = () =>
         postNextProof(client).catch((error) => console.warn('[PAYMENT-PROOF] post failed:', error?.message || error));
@@ -75,4 +87,4 @@ function startPaymentProofs(client) {
     setInterval(tick, CHECK_EVERY_MS);
 }
 
-module.exports = { startPaymentProofs, postNextProof };
+module.exports = { startPaymentProofs, postNextProof, postProofImage };
