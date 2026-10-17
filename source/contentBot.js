@@ -33,6 +33,7 @@ const {
     getUsernameSlashCommand,
     handleUsernameCommand,
     syncRegistrationLog,
+    startCreatorRoleSync,
     USERNAME_COMMAND,
 } = require('./creatorChannels');
 
@@ -81,6 +82,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     await syncRegistrationLog(readyClient).catch((error) => {
         console.warn('[CREATOR] registration sync failed:', error?.message || error);
     });
+    startCreatorRoleSync(readyClient);
     startPaymentProofs(readyClient);
 });
 

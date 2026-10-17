@@ -33,6 +33,7 @@ const TOOLS = 'https://app.ecomefficiency.com/tools';
 const ZORCHA = 'https://zorcha.com/';
 const DM_SETUP_VIDEO = 'https://player.mediadelivery.net/play/776484/e2aa021a-927d-4727-abb0-dc95b4935b04';
 const CREATOR_ROLE_ID = process.env.CREATOR_ROLE_ID || '1560108191142903868';
+const ROLE_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const PROFILE_PICTURES = 'https://drive.google.com/drive/folders/1WmSu-KKf1oPrnhrj3AKlt4Ai-RksM8XZ?usp=sharing';
 const DM_LINK = 'https://docs.google.com/document/d/1h4iUz5icf6Vp1w96mH3bAW7eRBifaOQfahFfwyCMOiU/edit?usp=drive_link';
 const REGISTRATION_LOG_CHANNEL_ID =
@@ -681,7 +682,7 @@ async function syncRegistrationLog(client) {
 }
 
 /** Give the creator role to everyone who already applied (not rejected), and log why it fails. */
-async function backfillCreatorRoles(guild) {
+async function backfillCreatorRoles(guild, { quiet = false } = {}) {
     if (!CREATOR_ROLE_ID) return;
     const role = await guild.roles.fetch(CREATOR_ROLE_ID).catch(() => null);
     const me = guild.members.me || (await guild.members.fetchMe().catch(() => null));
@@ -691,9 +692,11 @@ async function backfillCreatorRoles(guild) {
     }
     const canManage = Boolean(me?.permissions.has(PermissionFlagsBits.ManageRoles));
     const above = Boolean(me && me.roles.highest.position > role.position);
-    console.log(
-        `[CREATOR] Role check: "${role.name}" pos ${role.position} · bot top role "${me?.roles.highest.name}" pos ${me?.roles.highest.position} · Manage Roles ${canManage ? 'yes' : 'NO'} · bot above role ${above ? 'yes' : 'NO'}`
-    );
+    if (!quiet) {
+        console.log(
+            `[CREATOR] Role check: "${role.name}" pos ${role.position} · bot top role "${me?.roles.highest.name}" pos ${me?.roles.highest.position} · Manage Roles ${canManage ? 'yes' : 'NO'} · bot above role ${above ? 'yes' : 'NO'}`
+        );
+    }
     if (!canManage || !above) {
         console.warn('[CREATOR] Cannot grant the creator role: give the bot Manage Roles and move its role above the creator role.');
         return;
@@ -718,28 +721,43 @@ async function backfillCreatorRoles(guild) {
             console.warn(`[CREATOR] Could not grant creator role to ${member.user.tag}:`, error?.message || error);
         }
     }
-    console.log(
-        `[CREATOR] Creator role backfill: ${counts.granted} granted, ${counts.already} already had it, ${counts.left} not in server, ${counts.failed} failed`
-    );
+    if (!quiet || counts.granted || counts.failed) {
+        console.log(
+            `[CREATOR] Creator role backfill: ${counts.granted} granted, ${counts.already} already had it, ${counts.left} not in server, ${counts.failed} failed`
+        );
+    }
 }
 
-async function grantCreatorRole(interaction) {
-    if (!CREATOR_ROLE_ID || !interaction.guild) return false;
-    const member = interaction.member?.roles?.add
-        ? interaction.member
-        : await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+/** Re-run the backfill so creators who left and rejoined get the role back without a restart. */
+function startCreatorRoleSync(client) {
+    const timer = setInterval(async () => {
+        loadStore();
+        const channel = await client.channels.fetch(REGISTRATION_LOG_CHANNEL_ID).catch(() => null);
+        if (!channel?.guild) return;
+        await backfillCreatorRoles(channel.guild, { quiet: true }).catch((error) => {
+            console.warn('[CREATOR] Creator role sync failed:', error?.message || error);
+        });
+    }, ROLE_SYNC_INTERVAL_MS);
+    timer.unref?.();
+}
+
+async function grantCreatorRole(guild, userId, reason) {
+    if (!CREATOR_ROLE_ID || !guild) return false;
+    const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return false;
     if (member.roles.cache?.has(CREATOR_ROLE_ID)) return true;
     try {
-        await member.roles.add(CREATOR_ROLE_ID, 'Creator application submitted');
+        await member.roles.add(CREATOR_ROLE_ID, reason);
         return true;
     } catch (error) {
-        console.warn(`[CREATOR] Could not grant creator role to ${interaction.user.tag}:`, error?.message || error);
+        console.warn(`[CREATOR] Could not grant creator role to ${member.user.tag}:`, error?.message || error);
         return false;
     }
 }
 
 async function submitRegistration(interaction) {
+    // Role grant + staff notification can exceed Discord's 3 s reply window.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const value = (id) => clip(interaction.fields.getTextInputValue(id));
     const record = {
         discordId: interaction.user.id,
@@ -762,7 +780,7 @@ async function submitRegistration(interaction) {
     registrations.set(record.discordId, record);
     saveStore();
 
-    const roleGranted = await grantCreatorRole(interaction);
+    const roleGranted = await grantCreatorRole(interaction.guild, interaction.user.id, 'Creator application submitted');
 
     const channel = await interaction.client.channels.fetch(REGISTRATION_LOG_CHANNEL_ID).catch(() => null);
     if (previous?.messageId && previous.status === 'pending' && channel?.messages?.fetch) {
@@ -793,7 +811,7 @@ async function submitRegistration(interaction) {
             saveStore();
         }
     }
-    await interaction.reply({
+    await interaction.editReply({
         embeds: [
             new EmbedBuilder()
                 .setColor(COLOR)
@@ -804,7 +822,6 @@ async function submitRegistration(interaction) {
                         : 'Thanks — the team will review it from the notification. You’ll get a DM once it’s validated.'
                 ),
         ],
-        flags: MessageFlags.Ephemeral,
     });
 }
 
@@ -856,6 +873,7 @@ async function reviewRegistration(interaction, status) {
     registrations.set(discordId, record);
     saveStore();
     await interaction.message.edit({ embeds: [registrationEmbed(record)], components: [] }).catch(() => {});
+    if (status === 'approved') await grantCreatorRole(interaction.guild, discordId, 'Creator application approved');
 
     const applicant = await interaction.client.users.fetch(discordId).catch(() => null);
     const dm =
@@ -933,6 +951,7 @@ module.exports = {
     getUsernameSlashCommand,
     handleUsernameCommand,
     syncRegistrationLog,
+    startCreatorRoleSync,
     findRegistrations,
     USERNAME_COMMAND,
 };
