@@ -194,7 +194,7 @@ In the Railway service, open **Variables → Raw Editor** and paste:
 DISCORD_BOT_TOKEN=your_token
 DISCORD_SERVER_ID=your_guild_id
 ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-haiku-4
+CLAUDE_MODEL=claude-3-5-haiku-20241022
 TICKET_CHANNEL_PREFIX=ticket-
 OWNER_USER_ID=your_discord_user_id
 STAFF_ROLE_ID=optional_role_id
@@ -272,30 +272,36 @@ without redeploying).
 
 ## Costs
 
-### Anthropic API (Claude Haiku)
+### Anthropic API (Claude 3.5 Haiku)
 
-**Model used:** Claude Haiku 4 (12x cheaper than Sonnet, perfect for Q&A)
+**Model used:** Claude 3.5 Haiku (`claude-3-5-haiku-20241022`)
 
 With prompt caching enabled (already configured):
 
+**Pricing:**
+- Input: $0.80 / 1M tokens
+- Output: $4.00 / 1M tokens
+- Cached read: $0.08 / 1M tokens
+- **~4x cheaper than Claude 3.5 Sonnet**
+
 **Ticket Support Only** (~100 ticket messages/day):
-- Estimated: **$1-2/month** 🎉
+- Estimated: **$4-5/month**
 
 **With AI Support Agent** (~100 tickets + ~50 general chat replies/day):
-- Estimated: **$2-4/month** 🚀
+- Estimated: **$7-13/month**
 
-**Why Haiku is perfect for this:**
-- ✅ 12x cheaper than Claude Sonnet ($0.25 vs $3.00 per 1M input tokens)
-- ✅ Still very intelligent for Q&A tasks
-- ✅ Faster responses (lower latency)
+**Why Claude 3.5 Haiku is perfect:**
+- ✅ 3.75x cheaper than Claude 3.5 Sonnet
+- ✅ Very intelligent for Q&A and reasoning
+- ✅ Fast responses (optimized for speed)
 - ✅ Perfect for short, factual answers (1-3 sentences)
 - ✅ Excellent reasoning from knowledge base
 - ✅ Rate limiting prevents runaway costs
 
 **Cost monitoring tips:**
 - Check your Anthropic dashboard usage weekly during the first month
-- With Haiku, costs are so low (~$2-4/month) you rarely need to worry
-- If you need more detailed/nuanced responses, you can always upgrade to `CLAUDE_MODEL=claude-sonnet-4-5`
+- With Claude 3.5 Haiku, costs are very reasonable (~$10-15/month)
+- If you need more detailed/nuanced responses, you can upgrade to `CLAUDE_MODEL=claude-3-5-sonnet-20241022`
 
 See [COST_ESTIMATION_HAIKU.md](COST_ESTIMATION_HAIKU.md) for detailed pricing breakdown.
 
@@ -305,14 +311,14 @@ Railway Hobby plan: **$5/month** for the bot service (unchanged).
 
 ### Total estimated cost
 
-- **Conservative** (tickets only, agent disabled): **$6-7/month** ⭐
-- **Recommended** (tickets + agent in 2-3 channels): **$7-9/month** ⭐⭐⭐
-- **Heavy usage** (agent in many channels): **$9-11/month**
-- **Absolute maximum** (rate limited): **$14/month**
+- **Conservative** (tickets only, agent disabled): **$9-10/month** ⭐
+- **Recommended** (tickets + agent in 2-3 channels): **$12-14/month** ⭐⭐⭐
+- **Heavy usage** (agent in many channels): **$15-16/month**
+- **Absolute maximum** (rate limited): **$38/month**
 
 **Compared to alternatives:**
-- Intercom AI: $99-$499/month → **Saves $90-$490/month**
-- Zendesk AI: $50-$200/month → **Saves $41-$191/month**
+- Intercom AI: $99-$499/month → **Saves $85-$484/month**
+- Zendesk AI: $50-$200/month → **Saves $36-$185/month**
 
 ## Discord Permissions & Intents
 

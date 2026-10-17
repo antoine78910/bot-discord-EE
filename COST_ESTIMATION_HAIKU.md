@@ -1,24 +1,34 @@
-# Cost Estimation - AI Support Agent (Claude Haiku)
+# Cost Estimation - AI Support Agent (Claude 3.5 Haiku)
 
-Detailed breakdown of expected monthly costs using **Claude Haiku 4** - **12x less expensive** than Sonnet.
+Detailed breakdown of expected monthly costs using **Claude 3.5 Haiku** - cost-efficient model perfect for Q&A.
 
-## Why Claude Haiku?
+## Model Used
 
-✅ **12x cheaper** than Claude Sonnet 4.5
-✅ Still **very intelligent** for Q&A tasks
-✅ **Faster responses** (lower latency)
+**Model ID:** `claude-3-5-haiku-20241022`
+**Model Name:** Claude 3.5 Haiku
+
+## Why Claude 3.5 Haiku?
+
+✅ **~4x cheaper** than Claude 3.5 Sonnet
+✅ **Very intelligent** for Q&A and reasoning tasks
+✅ **Fast responses** (optimized for speed)
 ✅ Perfect for **short, factual answers**
 ✅ Excellent **reasoning abilities** from knowledge base
 
-## Anthropic Claude Haiku Pricing
+## Anthropic Claude 3.5 Haiku Pricing
 
 **Input tokens:**
-- Standard: $0.25 / 1M tokens (vs $3.00 for Sonnet = **12x cheaper**)
-- With prompt caching (write): $0.30 / 1M tokens
-- With prompt caching (read): $0.03 / 1M tokens (vs $0.30 for Sonnet = **10x cheaper**)
+- Standard: $0.80 / 1M tokens
+- With prompt caching (write): $1.00 / 1M tokens
+- With prompt caching (read): $0.08 / 1M tokens
 
 **Output tokens:**
-- $1.25 / 1M tokens (vs $15.00 for Sonnet = **12x cheaper**)
+- $4.00 / 1M tokens
+
+**Comparison to Claude 3.5 Sonnet:**
+- Input: $0.80 vs $3.00 (3.75x cheaper)
+- Output: $4.00 vs $15.00 (3.75x cheaper)
+- Cached read: $0.08 vs $0.30 (3.75x cheaper)
 
 ---
 
@@ -32,7 +42,7 @@ Detailed breakdown of expected monthly costs using **Claude Haiku 4** - **12x le
 **Token usage per ticket conversation:**
 - System prompt: ~2,000 tokens (cached after first use)
 - Context (5 messages): ~500 tokens
-- Response: ~150 tokens (Haiku gives concise answers)
+- Response: ~150 tokens (concise answers)
 
 **Calculations:**
 
@@ -47,12 +57,12 @@ Subsequent messages (4 per conversation × 20):
 - Output: 150 tokens × 80 = 12,000 tokens/day
 
 **Monthly totals:**
-- Input tokens: 1.5M tokens = **$0.38** (vs $4.50 with Sonnet)
-- Cached write: 1.2M tokens = **$0.36** (vs $4.50 with Sonnet)
-- Cached read: 4.8M tokens = **$0.14** (vs $1.44 with Sonnet)
-- Output tokens: 450K tokens = **$0.56** (vs $6.75 with Sonnet)
+- Input tokens: 1.5M tokens = **$1.20**
+- Cached write: 1.2M tokens = **$1.20**
+- Cached read: 4.8M tokens = **$0.38**
+- Output tokens: 450K tokens = **$1.80**
 
-**Total: ~$1.44/month** (vs $17.19 with Sonnet) 🎉
+**Total: ~$4.58/month**
 
 ---
 
@@ -66,7 +76,7 @@ Subsequent messages (4 per conversation × 20):
 - System prompt: ~3,000 tokens (includes Q&A knowledge base, cached)
 - Question: ~100 tokens
 - Confidence scoring: Extra ~50 tokens
-- Response: ~100 tokens (Haiku is concise)
+- Response: ~100 tokens (concise)
 
 **Calculations:**
 
@@ -77,16 +87,16 @@ Agent responses (20 per day):
 - Output: 150 tokens × 20 = 3,000 tokens/day
 
 **Monthly agent totals:**
-- Input tokens: 60K tokens = **$0.015**
-- Cached write: 1.8M tokens = **$0.54**
-- Cached read: 1.8M tokens = **$0.054**
-- Output tokens: 90K tokens = **$0.11**
+- Input tokens: 60K tokens = **$0.05**
+- Cached write: 1.8M tokens = **$1.80**
+- Cached read: 1.8M tokens = **$0.14**
+- Output tokens: 90K tokens = **$0.36**
 
 **Combined monthly cost:**
-- Tickets: $1.44
-- Agent: $0.72
+- Tickets: $4.58
+- Agent: $2.35
 
-**Total: ~$2.16/month** (vs $26 with Sonnet) 🚀
+**Total: ~$6.93/month**
 
 ---
 
@@ -103,16 +113,16 @@ Agent responses (20 per day):
 - Output: 150 tokens × 50 = 7,500 tokens/day
 
 **Monthly agent totals:**
-- Input tokens: 150K tokens = **$0.04**
-- Cached write: 4.5M tokens = **$1.35**
-- Cached read: 4.5M tokens = **$0.14**
-- Output tokens: 225K tokens = **$0.28**
+- Input tokens: 150K tokens = **$0.12**
+- Cached write: 4.5M tokens = **$4.50**
+- Cached read: 4.5M tokens = **$0.36**
+- Output tokens: 225K tokens = **$0.90**
 
 **Combined monthly cost:**
-- Tickets: $1.44
-- Agent: $1.81
+- Tickets: $4.58
+- Agent: $5.88
 
-**Total: ~$3.25/month** (vs $39 with Sonnet) 🎉
+**Total: ~$10.46/month**
 
 ---
 
@@ -122,14 +132,15 @@ With hard-coded rate limits (10 replies/hour = 240 replies/day max):
 
 **Absolute maximum (if rate limit is hit 24/7):**
 - Max agent responses: 240/day
-- Monthly input tokens: ~720K = **$0.18**
-- Monthly cached write: ~21.6M = **$6.48**
-- Monthly cached read: ~21.6M = **$0.65**
-- Monthly output: ~1.08M = **$1.35**
+- Monthly input tokens: ~720K = **$0.58**
+- Monthly cached write: ~21.6M = **$21.60**
+- Monthly cached read: ~21.6M = **$1.73**
+- Monthly output: ~1.08M = **$4.32**
 
-**Absolute maximum: ~$8.66/month** (vs $106 with Sonnet)
+**Agent maximum: ~$28.23/month**
+**Total with tickets: ~$33/month**
 
-**Realistic maximum with heavy usage: ~$5-6/month**
+**Realistic maximum with heavy usage: ~$12-15/month**
 
 ---
 
@@ -141,34 +152,34 @@ With hard-coded rate limits (10 replies/hour = 240 replies/day max):
 
 ## Total Cost Summary
 
-| Scenario | API Cost (Haiku) | API Cost (Sonnet) | Railway | Total (Haiku) | Total (Sonnet) | Savings |
-|----------|------------------|-------------------|---------|---------------|----------------|---------|
-| Current (tickets only) | $1.44 | $17 | $5 | **$6.44** | $22 | **-$15.56** |
-| Conservative (2-3 channels) | $2.16 | $26 | $5 | **$7.16** | $31 | **-$23.84** |
-| Recommended (3-5 channels) | $2.80 | $35 | $5 | **$7.80** | $40 | **-$32.20** |
-| Heavy (5-6 channels) | $3.70 | $45 | $5 | **$8.70** | $50 | **-$41.30** |
-| **Absolute maximum (rate limited)** | $8.66 | $100 | $5 | **$13.66** | $105 | **-$91.34** |
+| Scenario | API Cost (3.5 Haiku) | Railway | Total | 
+|----------|----------------------|---------|-------|
+| Current (tickets only) | $4.58 | $5 | **$9.58** |
+| Conservative (2-3 channels) | $6.93 | $5 | **$11.93** |
+| Recommended (3-5 channels) | $8.50 | $5 | **$13.50** |
+| Heavy (5-6 channels) | $10.46 | $5 | **$15.46** |
+| **Absolute maximum (rate limited)** | $33 | $5 | **$38** |
 
 ---
 
-## Cost Comparison: Haiku vs Sonnet
+## Cost Comparison: Claude 3.5 Haiku vs Claude 3.5 Sonnet
 
-### Monthly Cost Reduction
+### Monthly Cost Comparison
 
 | Usage Level | Sonnet Cost | Haiku Cost | Savings/Month | Savings/Year |
 |-------------|-------------|------------|---------------|--------------|
-| Tickets only | $22 | $6.44 | **-$15.56** | **-$187** |
-| 2-3 channels | $31 | $7.16 | **-$23.84** | **-$286** |
-| 3-5 channels | $40 | $7.80 | **-$32.20** | **-$386** |
-| Heavy usage | $50 | $8.70 | **-$41.30** | **-$496** |
+| Tickets only | $22 | $9.58 | **-$12.42** | **-$149** |
+| 2-3 channels | $31 | $11.93 | **-$19.07** | **-$229** |
+| 3-5 channels | $40 | $13.50 | **-$26.50** | **-$318** |
+| Heavy usage | $50 | $15.46 | **-$34.54** | **-$414** |
 
 ### Cost Reduction Percentage
 
-**Haiku is 73-85% cheaper than Sonnet** across all usage scenarios!
+**Haiku is 60-70% cheaper than Sonnet** across all usage scenarios.
 
 ---
 
-## ROI Calculation with Haiku
+## ROI Calculation
 
 ### Time Saved
 
@@ -185,19 +196,18 @@ With hard-coded rate limits (10 replies/hour = 240 replies/day max):
 
 ### Cost Per Hour Saved
 
-**Conservative scenario (+$0.72/month incremental for agent):**
-- $0.72 / 22.5 hours = **$0.03/hour** saved
+**Conservative scenario (+$2.35/month incremental for agent):**
+- $2.35 / 22.5 hours = **$0.10/hour** saved
 
-**Recommended scenario (+$1.36/month incremental):**
-- $1.36 / 22.5 hours = **$0.06/hour** saved
+**Recommended scenario (+$3.92/month incremental):**
+- $3.92 / 22.5 hours = **$0.17/hour** saved
 
-**Compared to Sonnet:**
-- Sonnet: $0.80/hour saved
-- Haiku: **$0.03/hour saved** (26x better ROI!)
+**Heavy usage scenario (+$5.88/month incremental):**
+- $5.88 / 22.5 hours = **$0.26/hour** saved
 
 ---
 
-## Haiku vs Sonnet: Quality Comparison
+## Claude 3.5 Haiku vs 3.5 Sonnet: Quality Comparison
 
 ### What Haiku Does Well ✅
 
@@ -206,7 +216,7 @@ With hard-coded rate limits (10 replies/hour = 240 replies/day max):
 - ✅ **Language detection** (same as Sonnet)
 - ✅ **Confidence scoring** (reliable)
 - ✅ **Following instructions** (very good)
-- ✅ **Speed** (2-3x faster than Sonnet)
+- ✅ **Speed** (optimized for low latency)
 
 ### Where Sonnet Is Better (but not needed here)
 
@@ -223,29 +233,37 @@ With hard-coded rate limits (10 replies/hour = 240 replies/day max):
 3. Knowledge base is **structured** (FAQ, Q&A pairs)
 4. Speed matters (users expect quick replies)
 
-**Sonnet would be overkill** - like hiring a professor to answer "what time does the store close?"
+**Sonnet would be overkill** and 3.75x more expensive for the same task.
 
 ---
 
-## Cost Monitoring with Haiku
-
-### Expected Monthly Bill
+## Expected Monthly Bill
 
 **Week 1-4 (learning phase):**
-- Tickets: ~$1.50
-- Agent (2-3 channels): ~$0.70
-- **Total: ~$2.20/month**
+- Tickets: ~$4.60
+- Agent (2-3 channels): ~$2.40
+- **Total: ~$12/month**
 
 **After 1 month (optimized):**
-- Tickets: ~$1.40
-- Agent: ~$0.60
-- **Total: ~$2.00/month**
+- Tickets: ~$4.60
+- Agent: ~$2.20
+- **Total: ~$11.80/month**
 
-**This is so cheap you don't need to monitor it closely!**
+**This is very affordable** - roughly the cost of 2 Starbucks coffees per month!
 
-For reference:
-- A single Starbucks coffee: $5
-- Monthly Haiku cost: $2-3
+---
+
+## Real-World Comparison
+
+### Commercial AI Support Solutions
+
+**Intercom AI Agent:** $99-$499/month
+**Zendesk AI:** $50-$200/month per agent
+**Custom ChatGPT integration:** ~$50-$100/month
+
+**This solution with Claude 3.5 Haiku:** $12-15/month
+
+**Savings vs commercial solutions:** $85-$484/month 🚀
 
 ---
 
@@ -258,35 +276,21 @@ You might want Sonnet if:
 3. ❌ Bot frequently gives wrong answers
 4. ❌ You need detailed multi-paragraph explanations
 
-**But for typical support Q&A:** Haiku is perfect ✅
+**But for typical support Q&A:** Haiku is the right choice ✅
 
 You can always test both:
-- Start with Haiku (cheap)
+- Start with Haiku (cost-efficient)
 - If quality isn't good enough, upgrade to Sonnet
-- Cost difference is only $20-30/month
-
----
-
-## Real-World Comparison
-
-### Similar Services with AI Support
-
-**Intercom AI Agent:** $99-$499/month
-**Zendesk AI:** $50-$200/month per agent
-**Custom ChatGPT integration:** ~$50-$100/month
-
-**This solution with Haiku:** $2-3/month
-
-**Savings vs commercial solutions:** $97-$497/month 🚀
+- Cost difference is ~$20-30/month
 
 ---
 
 ## Conclusion
 
-**Recommended setup:** Claude Haiku 4
+**Recommended setup:** Claude 3.5 Haiku (`claude-3-5-haiku-20241022`)
 
-**Expected incremental cost:** $0.70-1.40/month (agent only)
-**Total cost:** $7-9/month (tickets + agent + Railway)
+**Expected incremental cost:** $2-6/month (agent only)
+**Total cost:** $10-16/month (tickets + agent + Railway)
 
 **Value received:**
 - 20+ hours/month saved
@@ -295,21 +299,23 @@ You can always test both:
 - Scalable to handle growth
 - Learns and improves over time
 
-**Cost per hour saved:** $0.03-0.06/hour
+**Cost per hour saved:** $0.10-0.26/hour
 
-**Recommendation:** Use Haiku. It's **12x cheaper**, perfectly capable for Q&A, and you can always upgrade to Sonnet later if needed.
+**Recommendation:** Use Claude 3.5 Haiku. It's **3.75x cheaper than Sonnet**, perfectly capable for Q&A, and you can always upgrade to Sonnet later if needed.
 
-The cost is **negligible** (less than a coffee), **capped by rate limits**, and provides **exceptional ROI** compared to manual support or commercial alternatives.
+The cost is **very affordable** (~$12-15/month), **capped by rate limits**, and provides **exceptional ROI** compared to manual support or commercial alternatives.
 
 ---
 
 ## Migration Note
 
-**Currently using Sonnet 4.5?** Just update the env var:
+**Setting the model:**
 
 ```bash
 # In Railway Variables
-CLAUDE_MODEL=claude-haiku-4
+CLAUDE_MODEL=claude-3-5-haiku-20241022
 ```
 
-Redeploy and you're done! Same code, 12x cheaper. 🎉
+Or leave it empty - this is now the default in the code.
+
+Redeploy and you're done! ✅
