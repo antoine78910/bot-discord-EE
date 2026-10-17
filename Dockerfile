@@ -18,5 +18,6 @@ EXPOSE 1500
 ENV NODE_ENV=production
 ENV PYTHON_BIN=python3
 
-# BOT_ENTRY=contentBot.js runs the dedicated content bot (separate Railway service).
-CMD ["sh", "-c", "exec node ${BOT_ENTRY:-index.js}"]
+# Launch both bots by default (content bot + main chatbot)
+# Set BOT_ENTRY=contentBot.js or BOT_ENTRY=index.js to run only one
+CMD ["sh", "-c", "if [ -n \"$BOT_ENTRY\" ]; then exec node $BOT_ENTRY; else exec node start-both.js; fi"]
