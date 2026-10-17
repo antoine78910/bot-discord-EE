@@ -20,6 +20,7 @@ const {
     collectImageAttachments,
     isOtpCodeRequest,
 } = require('./support');
+const aiSupportAgent = require('./aiSupportAgent');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -139,6 +140,15 @@ const AI_ESCALATION_KEYWORDS = [
     'parler a quelqu',
     'parler à quelqu',
 ];
+
+// === AI Support Agent (general chat monitoring) ===
+const AI_AGENT_STAFF_ALERT_CHANNEL_ID = process.env.AI_AGENT_STAFF_ALERT_CHANNEL_ID || null;
+const AGENT_ENABLE_COMMAND = 'agent-enable';
+const AGENT_DISABLE_COMMAND = 'agent-disable';
+const AGENT_STATUS_COMMAND = 'agent-status';
+const AGENT_CHANNEL_ADD_COMMAND = 'agent-channel-add';
+const AGENT_CHANNEL_REMOVE_COMMAND = 'agent-channel-remove';
+const AGENT_REBUILD_QA_COMMAND = 'agent-rebuild-qa';
 
 // === Cancellation flow ===
 const ECOM_AGENT_ROLE_ID = String(process.env.ECOM_AGENT_ROLE_ID || '1244916325294542858').trim();
@@ -1254,6 +1264,105 @@ async function handleRemoveCancelledAgentsCommand(interaction) {
     }
 }
 
+// === AI Support Agent command handlers ===
+async function handleAgentEnableCommand(interaction) {
+    aiSupportAgent.setAgentEnabled(true);
+    await interaction.reply({ 
+        content: '✅ AI support agent enabled globally. Use `/agent-channel-add` to enable specific channels.', 
+        ephemeral: true 
+    });
+    log('AI-AGENT', `Enabled by ${interaction.user?.username}`);
+}
+
+async function handleAgentDisableCommand(interaction) {
+    aiSupportAgent.setAgentEnabled(false);
+    await interaction.reply({ 
+        content: '🛑 AI support agent disabled globally (kill switch activated).', 
+        ephemeral: true 
+    });
+    log('AI-AGENT', `Disabled by ${interaction.user?.username}`);
+}
+
+async function handleAgentStatusCommand(interaction) {
+    const stats = aiSupportAgent.getStats();
+    const enabledChannels = aiSupportAgent.getEnabledChannels();
+    
+    const channelList = enabledChannels.length > 0
+        ? enabledChannels.map(id => `<#${id}>`).join(', ')
+        : '(none)';
+    
+    const alertChannel = aiSupportAgent.getStaffAlertChannel();
+    const alertChannelText = alertChannel ? `<#${alertChannel}>` : '(not configured)';
+    
+    const statusText = `**AI Support Agent Status**
+
+**Global Status:** ${stats.enabled ? '✅ Enabled' : '🛑 Disabled'}
+**Q&A Knowledge Base:** ${stats.qaKnowledgeBase} pairs extracted
+**Enabled Channels (${stats.enabledChannels}):** ${channelList}
+**Staff Alert Channel:** ${alertChannelText}
+**Replies (last hour):** ${stats.repliesLastHour}
+
+Use \`/agent-channel-add\` and \`/agent-channel-remove\` to manage monitored channels.
+Set \`AI_AGENT_STAFF_ALERT_CHANNEL_ID\` in environment to configure alerts.`;
+    
+    await interaction.reply({ content: statusText, ephemeral: true });
+}
+
+async function handleAgentChannelAddCommand(interaction) {
+    const channel = interaction.options.getChannel('channel', true);
+    
+    if (!channel.isTextBased()) {
+        await interaction.reply({ content: 'Channel must be a text channel.', ephemeral: true });
+        return;
+    }
+    
+    if (aiSupportAgent.isChannelEnabled(channel.id)) {
+        await interaction.reply({ content: `AI agent is already enabled in ${channel}.`, ephemeral: true });
+        return;
+    }
+    
+    aiSupportAgent.enableChannel(channel.id);
+    await interaction.reply({ 
+        content: `✅ AI support agent enabled in ${channel}. The bot will now monitor questions in this channel.`, 
+        ephemeral: true 
+    });
+    log('AI-AGENT', `Channel enabled: #${channel.name} by ${interaction.user?.username}`);
+}
+
+async function handleAgentChannelRemoveCommand(interaction) {
+    const channel = interaction.options.getChannel('channel', true);
+    
+    if (!aiSupportAgent.isChannelEnabled(channel.id)) {
+        await interaction.reply({ content: `AI agent is not enabled in ${channel}.`, ephemeral: true });
+        return;
+    }
+    
+    aiSupportAgent.disableChannel(channel.id);
+    await interaction.reply({ 
+        content: `🛑 AI support agent disabled in ${channel}.`, 
+        ephemeral: true 
+    });
+    log('AI-AGENT', `Channel disabled: #${channel.name} by ${interaction.user?.username}`);
+}
+
+async function handleAgentRebuildQACommand(interaction) {
+    if (!interaction.guild) {
+        await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
+        return;
+    }
+    
+    await interaction.reply({ content: 'Rebuilding Q&A knowledge base from message history...', ephemeral: true });
+    
+    try {
+        await aiSupportAgent.buildQAKnowledgeBase(interaction.guild, client, OWNER_USER_ID, STAFF_ROLE_ID);
+        const stats = aiSupportAgent.getStats();
+        await interaction.editReply(`✅ Q&A knowledge base rebuilt: ${stats.qaKnowledgeBase} pairs extracted.`);
+    } catch (error) {
+        console.error('[AI-AGENT] Q&A rebuild failed:', error);
+        await interaction.editReply(`❌ Failed to rebuild Q&A knowledge base: ${error?.message || 'unknown error'}`);
+    }
+}
+
 // === Slash commands ===
 function getSlashCommands() {
     return [
@@ -1310,6 +1419,43 @@ function getSlashCommands() {
                     .setDescription('Same Sublaunch CSV: discordId, status, customerStripeId')
                     .setRequired(true)
             ),
+        // AI Support Agent commands
+        new SlashCommandBuilder()
+            .setName(AGENT_ENABLE_COMMAND)
+            .setDescription('Enable the AI support agent globally (general chat monitoring).')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName(AGENT_DISABLE_COMMAND)
+            .setDescription('Disable the AI support agent globally (kill switch).')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName(AGENT_STATUS_COMMAND)
+            .setDescription('Show AI support agent status and statistics.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName(AGENT_CHANNEL_ADD_COMMAND)
+            .setDescription('Enable AI support agent in a specific channel.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addChannelOption((option) =>
+                option
+                    .setName('channel')
+                    .setDescription('Channel to enable AI monitoring in')
+                    .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName(AGENT_CHANNEL_REMOVE_COMMAND)
+            .setDescription('Disable AI support agent in a specific channel.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addChannelOption((option) =>
+                option
+                    .setName('channel')
+                    .setDescription('Channel to disable AI monitoring in')
+                    .setRequired(true)
+            ),
+        new SlashCommandBuilder()
+            .setName(AGENT_REBUILD_QA_COMMAND)
+            .setDescription('Rebuild the Q&A knowledge base from message history.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     ];
 }
 
@@ -1349,9 +1495,18 @@ client.once(Events.ClientReady, async (readyClient) => {
     } catch (error) {
         console.warn('[BOT] AdsPower OTP panel on startup:', error?.message || error);
     }
+    
+    // Initialize AI Support Agent
+    if (AI_AGENT_STAFF_ALERT_CHANNEL_ID) {
+        aiSupportAgent.setStaffAlertChannel(AI_AGENT_STAFF_ALERT_CHANNEL_ID);
+        log('AI-AGENT', `Staff alert channel: ${AI_AGENT_STAFF_ALERT_CHANNEL_ID}`);
+    }
+    
     if (GUILD_ID) {
         try {
             const guild = await client.guilds.fetch(GUILD_ID);
+            
+            // Build server knowledge (existing)
             buildServerKnowledge(guild).catch((error) => {
                 console.warn('[KNOWLEDGE] initial build failed:', error?.message || error);
             });
@@ -1360,6 +1515,19 @@ client.once(Events.ClientReady, async (readyClient) => {
                     console.warn('[KNOWLEDGE] periodic build failed:', error?.message || error);
                 });
             }, KNOWLEDGE_REBUILD_INTERVAL_MS);
+            
+            // Build Q&A knowledge base (new)
+            if (anthropicClient) {
+                aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
+                    console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
+                });
+                // Rebuild Q&A knowledge base every 6 hours
+                setInterval(() => {
+                    aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
+                        console.warn('[AI-AGENT] Q&A rebuild failed:', error?.message || error);
+                    });
+                }, 6 * 60 * 60 * 1000);
+            }
         } catch (error) {
             console.warn('[KNOWLEDGE] could not start indexer:', error?.message || error);
         }
@@ -1382,6 +1550,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleAuditCancelledAgentsCommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === REMOVE_CANCELLED_AGENTS_COMMAND) {
             await handleRemoveCancelledAgentsCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_ENABLE_COMMAND) {
+            await handleAgentEnableCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_DISABLE_COMMAND) {
+            await handleAgentDisableCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_STATUS_COMMAND) {
+            await handleAgentStatusCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_CHANNEL_ADD_COMMAND) {
+            await handleAgentChannelAddCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_CHANNEL_REMOVE_COMMAND) {
+            await handleAgentChannelRemoveCommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_REBUILD_QA_COMMAND) {
+            await handleAgentRebuildQACommand(interaction);
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);
@@ -1404,9 +1584,24 @@ client.on(Events.ChannelCreate, (channel) => {
 });
 
 client.on(Events.MessageCreate, (message) => {
+    // Handle ticket AI (existing functionality)
     handleTicketAiMessage(message).catch((error) => {
         console.error('[AI] message handler error:', error?.message || error);
     });
+    
+    // Handle general chat monitoring (new functionality)
+    if (anthropicClient) {
+        aiSupportAgent.handleGeneralChatMessage(message, {
+            client,
+            anthropicClient,
+            model: CLAUDE_MODEL,
+            ownerUserId: OWNER_USER_ID,
+            staffRoleId: STAFF_ROLE_ID,
+            faqText: loadFaqText(),
+        }).catch((error) => {
+            console.error('[AI-AGENT] general chat handler error:', error?.message || error);
+        });
+    }
 });
 
 client.on(Events.ShardDisconnect, (event, shardId) => {

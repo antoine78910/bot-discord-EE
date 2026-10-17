@@ -1,10 +1,10 @@
-# Ecom Efficiency · Tickets Bot
+# Ecom Efficiency · Tickets Bot + AI Support Agent
 
-Discord first-line support assistant powered by Claude, with a web dashboard
-to inspect every ticket conversation in real time.
+Discord first-line support assistant powered by Claude, with intelligent general chat monitoring and a web dashboard to inspect every conversation in real time.
 
 ## What it does
 
+### Ticket Support (Existing)
 - **Greets** every new ticket channel (any channel whose name starts with `ticket-`).
 - **Reads** the FAQ (`source/data/faq.md`) and an auto-generated knowledge base
   built from your public Discord channels.
@@ -18,6 +18,17 @@ to inspect every ticket conversation in real time.
 - **Logs everything** to `data/tickets-history.json` and exposes a web dashboard
   on the configured `PORT` showing all tickets, conversations and stats.
 
+### AI Support Agent (NEW)
+- **Learns from history**: Automatically extracts Q&A pairs from past conversations where staff/Antoine answered questions.
+- **Monitors general chat**: Watches enabled channels for questions and responds when confident (≥70% confidence threshold).
+- **Confidence-based responses**: Only replies when the answer is well-supported by FAQ and learned knowledge.
+- **Smart escalation**: Sends low-confidence questions to a staff alert channel instead of guessing.
+- **Respects staff**: Never replies when staff is already active in the conversation.
+- **Rate limiting**: Self-limits to prevent spam (max 10 replies/hour globally, 3 per channel/hour, 1 minute between replies).
+- **Sensitive topic detection**: Automatically escalates refunds, billing, bans, legal issues, and partnerships.
+- **Per-channel control**: Enable/disable monitoring on specific channels.
+- **Kill switch**: Global enable/disable control for emergencies.
+
 ## Local dev
 
 ```bash
@@ -27,13 +38,111 @@ npm install
 npm start
 ```
 
+
 Dashboard: http://localhost:1500
+
+## Setting up the AI Support Agent
+
+The AI Support Agent monitors general chat channels and responds to member questions automatically when confident. Here's how to activate it:
+
+### 1. Configure the staff alert channel
+
+First, create a private channel for staff alerts (e.g., `#ai-alerts` or `#staff-notifications`). This is where the bot will send low-confidence questions that need human review.
+
+Get the channel ID:
+1. Enable Developer Mode in Discord (User Settings → Advanced → Developer Mode)
+2. Right-click the alert channel → Copy ID
+3. Add to your `.env` or Railway variables:
+   ```
+   AI_AGENT_STAFF_ALERT_CHANNEL_ID=your_channel_id_here
+   ```
+
+### 2. Run the initial knowledge base extraction
+
+After the bot starts, it will automatically extract Q&A pairs from message history. You can trigger a manual rebuild:
+
+```
+/agent-rebuild-qa
+```
+
+This scans all channels the bot can read, looking for patterns where:
+- A member asks a question
+- Staff/Antoine responds
+
+The bot learns from these exchanges and uses them to answer similar questions later.
+
+### 3. Enable the agent and add channels
+
+```
+/agent-enable
+/agent-channel-add channel:#general
+/agent-channel-add channel:#support-français
+```
+
+Add any channels where you want the bot to monitor questions. The bot will:
+- Only reply when confident (≥70% confidence)
+- Never reply if staff is already active
+- Respect rate limits (won't spam)
+- Escalate sensitive topics (refunds, billing, bans, etc.) to the alert channel
+
+### 4. Monitor and adjust
+
+Check the status anytime:
+```
+/agent-status
+```
+
+This shows:
+- Global enable/disable state
+- Number of Q&A pairs learned
+- Which channels are monitored
+- Reply activity (last hour)
+- Staff alert channel
+
+### 5. Emergency kill switch
+
+If the bot ever misbehaves:
+```
+/agent-disable
+```
+
+This immediately stops all general chat monitoring (ticket support continues normally).
+
+### How it works
+
+**Confidence scoring**: Before replying, the bot rates its confidence from 0-100%. If confidence is below 70%, it sends an alert to the staff channel instead of replying publicly.
+
+**Rate limiting**: The bot will never send more than:
+- 10 replies per hour globally
+- 3 replies per hour per channel
+- 1 reply per minute in any channel
+
+**Staff detection**: The bot checks the last 5 messages before replying. If any are from staff/Antoine in the last 5 minutes, it stays silent.
+
+**Sensitive topics**: Questions containing keywords like "refund", "ban", "billing", "payment", "legal", etc. are automatically escalated to staff, never answered by the bot.
+
+### Recommended workflow
+
+1. **Start conservative**: Enable monitoring in 1-2 busy channels first (like `#general`).
+2. **Watch the alert channel**: Review low-confidence questions. Use `/teach` to add answers for common questions the bot isn't confident about yet.
+3. **Expand gradually**: Once you're happy with the response quality, add more channels.
+4. **Periodic review**: Check `/agent-status` weekly to see activity. Rebuild the Q&A base monthly or after major FAQ changes with `/agent-rebuild-qa`.
 
 ## Slash commands (admin)
 
+### Ticket AI Commands
 - `/ai-toggle state:on|off` — pause/resume the AI in the current ticket.
 - `/reindex-knowledge` — rebuild the channel knowledge base now (also runs at
   startup and every 12 h).
+- `/teach question:"..." answer:"..."` — teach the AI a new Q&A pair manually.
+
+### AI Support Agent Commands (NEW)
+- `/agent-enable` — enable the AI support agent globally.
+- `/agent-disable` — disable the AI support agent (kill switch).
+- `/agent-status` — show current status, enabled channels, and statistics.
+- `/agent-channel-add channel:#general` — enable monitoring in a specific channel.
+- `/agent-channel-remove channel:#general` — disable monitoring in a specific channel.
+- `/agent-rebuild-qa` — rebuild the Q&A knowledge base from message history now (also runs automatically every 6 hours).
 
 ---
 
@@ -91,6 +200,10 @@ OWNER_USER_ID=your_discord_user_id
 STAFF_ROLE_ID=optional_role_id
 ECOM_AGENT_ROLE_ID=1244916325294542858
 DASHBOARD_PASSWORD=a_strong_password_you_choose
+
+# AI Support Agent (NEW)
+# Create a private staff channel for low-confidence question alerts
+AI_AGENT_STAFF_ALERT_CHANNEL_ID=your_staff_alert_channel_id
 
 # AdsPower Discord button → Next.js /admin tracking (REQUIRED or clicks are not saved)
 # Use your real production URL (https, no trailing slash before /api).
@@ -159,7 +272,57 @@ without redeploying).
 
 ## Costs
 
-With prompt caching enabled (already on) and ~100 messages per day, using
-Claude Sonnet 4.5, expect roughly **$10-20/month** in Anthropic costs.
+### Anthropic API (Claude)
 
-Railway Hobby plan: $5/month for the bot service.
+With prompt caching enabled (already configured) and the new AI Support Agent:
+
+**Ticket Support Only** (~100 ticket messages/day):
+- Estimated: **$10-15/month**
+
+**With AI Support Agent** (~100 tickets + ~50 general chat replies/day):
+- Estimated: **$20-30/month**
+
+The AI Support Agent is cost-efficient because:
+- It only runs Claude when it detects a question
+- Uses confidence scoring to avoid unnecessary API calls
+- Rate limiting prevents runaway costs
+- Q&A knowledge base is built incrementally (not on every message)
+
+**Cost monitoring tips:**
+- Check your Anthropic dashboard usage weekly during the first month
+- If costs are higher than expected, reduce `RATE_LIMIT_MESSAGES_PER_HOUR` in `aiSupportAgent.js`
+- Monitor `/agent-status` to see reply volume
+
+### Railway hosting
+
+Railway Hobby plan: **$5/month** for the bot service (unchanged).
+
+### Total estimated cost
+
+- **Conservative** (tickets only, agent disabled): $15-20/month
+- **Recommended** (tickets + agent in 2-3 channels): $25-35/month
+- **Aggressive** (agent in many channels): $35-50/month
+
+## Discord Permissions & Intents
+
+The bot requires these Discord intents (already configured in `index.js`):
+- `Guilds` — read server/channel structure
+- `GuildMessages` — read messages in channels
+- `MessageContent` — read message text (privileged intent)
+- `GuildMembers` — check user roles
+
+**Important**: The `MessageContent` intent is **privileged**. To enable it:
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Select your application → Bot tab
+3. Scroll to "Privileged Gateway Intents"
+4. Enable "Message Content Intent"
+5. Save changes
+
+Without this intent, the bot cannot read message text and will not work.
+
+**Bot permissions** (invite link):
+- Read Messages/View Channels
+- Send Messages
+- Read Message History
+- Add Reactions (for future reaction-based corrections)
+- Manage Roles (only if using the audit/remove cancelled agents commands)
