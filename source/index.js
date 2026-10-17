@@ -170,7 +170,7 @@ const AGENT_STATUS_COMMAND = 'agent-status';
 const AGENT_CHANNEL_ADD_COMMAND = 'agent-channel-add';
 const AGENT_CHANNEL_REMOVE_COMMAND = 'agent-channel-remove';
 const AGENT_REBUILD_QA_COMMAND = 'agent-rebuild-qa';
-const AGENT_INITIAL_SCRAPE_COMMAND = 'agent-initial-scrape';
+const AGENT_INITIAL_SCRAPE_COMMAND = 'agent-scrape-all';
 
 // === Cancellation flow ===
 const ECOM_AGENT_ROLE_ID = String(process.env.ECOM_AGENT_ROLE_ID || '1244916325294542858').trim();
@@ -1508,28 +1508,131 @@ async function handleAgentRebuildQACommand(interaction) {
     }
 }
 
+/**
+ * Automatic scraping on startup if knowledge base is empty
+ */
+async function autoScrapeOnStartup(guild, client) {
+    try {
+        // Check if Q&A knowledge base already exists
+        const dataDir = process.env.DATA_DIRECTORY || path.resolve(__dirname, 'data');
+        const qaPath = path.join(dataDir, 'qa-knowledge-base.json');
+        const qaPathGz = qaPath + '.gz';
+        
+        // If knowledge base exists (compressed or uncompressed), don't auto-scrape
+        if (fs.existsSync(qaPath) || fs.existsSync(qaPathGz)) {
+            log('AI-AGENT', 'Knowledge base exists, skipping auto-scrape. Use /agent-scrape-all to rebuild.');
+            return;
+        }
+        
+        log('AI-AGENT', '🚀 No knowledge base found - starting automatic FULL scrape of ALL channels...');
+        
+        const channels = await guild.channels.fetch();
+        const textChannels = [...channels.values()].filter(c => c.isTextBased());
+        
+        let totalMessages = 0;
+        let totalQAPairs = 0;
+        let channelsProcessed = 0;
+        const messagesPerChannel = 1000;
+        
+        for (const channel of textChannels) {
+            try {
+                // Check permissions
+                const me = guild.members.me;
+                if (!me) continue;
+                const perms = channel.permissionsFor(me);
+                if (!perms?.has('ViewChannel') || !perms?.has('ReadMessageHistory')) continue;
+                
+                log('AI-AGENT', `Auto-scraping #${channel.name}...`);
+                
+                let fetchedCount = 0;
+                let lastId = null;
+                const channelMessages = [];
+                
+                // Fetch ALL messages in batches
+                while (fetchedCount < messagesPerChannel) {
+                    const options = { limit: Math.min(100, messagesPerChannel - fetchedCount) };
+                    if (lastId) options.before = lastId;
+                    
+                    const batch = await channel.messages.fetch(options);
+                    if (batch.size === 0) break;
+                    
+                    channelMessages.push(...batch.values());
+                    fetchedCount += batch.size;
+                    lastId = batch.last()?.id;
+                    
+                    if (batch.size < 100) break;
+                }
+                
+                // Extract Q&A pairs
+                const ordered = channelMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+                let pairsInChannel = 0;
+                
+                for (let i = 0; i < ordered.length - 1; i++) {
+                    const userMsg = ordered[i];
+                    if (userMsg.author.bot) continue;
+                    if (!userMsg.content?.trim()) continue;
+                    
+                    const content = userMsg.content.trim();
+                    // Check if it's a question
+                    if (!content.includes('?') && 
+                        !content.toLowerCase().match(/comment|quoi|quand|où|pourquoi|qui|quel|how|what|when|where|why|who|which|can i|help|problem|issue|error/)) {
+                        continue;
+                    }
+                    
+                    // Look for staff response
+                    for (let j = i + 1; j < Math.min(i + 5, ordered.length); j++) {
+                        const staffMsg = ordered[j];
+                        const isStaff = STAFF_ROLE_ID && staffMsg.member?.roles?.cache?.has(STAFF_ROLE_ID);
+                        const isOwner = OWNER_USER_ID && staffMsg.author?.id === OWNER_USER_ID;
+                        
+                        if ((isStaff || isOwner) && staffMsg.content?.trim() && staffMsg.content.trim().length > 20) {
+                            appendLearning({
+                                question: content.slice(0, 500),
+                                answer: staffMsg.content.trim().slice(0, 1000),
+                                capturedAt: new Date(userMsg.createdTimestamp).toISOString(),
+                                channelName: channel.name,
+                                source: `auto-scrape-startup`,
+                            });
+                            pairsInChannel++;
+                            totalQAPairs++;
+                            break;
+                        }
+                    }
+                }
+                
+                totalMessages += fetchedCount;
+                channelsProcessed++;
+                
+                log('AI-AGENT', `✓ #${channel.name}: ${fetchedCount} messages, ${pairsInChannel} Q&A pairs`);
+                
+            } catch (error) {
+                log('AI-AGENT', `✗ #${channel.name}: ${error.message}`);
+            }
+        }
+        
+        // Build Q&A knowledge base from extracted pairs
+        await aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID);
+        
+        log('AI-AGENT', `✅ Auto-scrape complete: ${channelsProcessed} channels, ${totalMessages.toLocaleString()} messages, ${totalQAPairs} Q&A pairs`);
+        
+    } catch (error) {
+        console.error('[AI-AGENT] Auto-scrape failed:', error);
+    }
+}
+
 async function handleAgentInitialScrapeCommand(interaction) {
     if (!interaction.guild) {
         await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
         return;
     }
     
-    const messagesPerChannel = Math.min(
-        interaction.options.getInteger('messages_per_channel') || 500,
-        500 // Hard limit to prevent volume overflow
-    );
+    // No parameters needed - scrape EVERYTHING
+    const messagesPerChannel = 1000; // Scrape up to 1000 messages per channel
     
     await interaction.deferReply({ ephemeral: true });
     
     try {
-        log('AI-AGENT', 'Starting deep scrape of all channels...', { messagesPerChannel });
-        
-        // Check volume space before starting
-        const learningsSize = fs.existsSync(LEARNINGS_PATH) ? fs.statSync(LEARNINGS_PATH).size : 0;
-        if (learningsSize > LEARNINGS_MAX_FILE_SIZE) {
-            await interaction.editReply(`⚠️ Learnings file is already at max size (${(learningsSize / 1024 / 1024).toFixed(2)}MB). Please wait for next rotation or contact admin.`);
-            return;
-        }
+        log('AI-AGENT', 'Starting FULL scrape of ALL channels (no limits)...');
         
         const guild = interaction.guild;
         const channels = await guild.channels.fetch();
@@ -1539,7 +1642,7 @@ async function handleAgentInitialScrapeCommand(interaction) {
         let totalQAPairs = 0;
         let channelsProcessed = 0;
         
-        await interaction.editReply(`🔄 Scraping ${textChannels.length} channels (${messagesPerChannel} messages each)...\nThis will take a few minutes.`);
+        await interaction.editReply(`🔄 Scraping ${textChannels.length} channels complets...\nCela va prendre quelques minutes.`);
         
         for (const channel of textChannels) {
             try {
@@ -1555,7 +1658,7 @@ async function handleAgentInitialScrapeCommand(interaction) {
                 let lastId = null;
                 const channelMessages = [];
                 
-                // Fetch messages in batches
+                // Fetch ALL messages in batches
                 while (fetchedCount < messagesPerChannel) {
                     const options = { limit: Math.min(100, messagesPerChannel - fetchedCount) };
                     if (lastId) options.before = lastId;
@@ -1741,14 +1844,8 @@ function getSlashCommands() {
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder()
             .setName(AGENT_INITIAL_SCRAPE_COMMAND)
-            .setDescription('Scrape ALL messages from ALL channels (initial learning phase).')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-            .addIntegerOption((option) =>
-                option
-                    .setName('messages_per_channel')
-                    .setDescription('Number of messages to scrape per channel (default: 1000)')
-                    .setRequired(false)
-            ),
+            .setDescription('Scrape TOUS les messages de TOUS les channels (apprentissage complet automatique)')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     ];
 }
 
@@ -1846,14 +1943,21 @@ client.once(Events.ClientReady, async (readyClient) => {
             // Build Q&A knowledge base (new)
             if (aiClient) {
                 // Load existing knowledge base from disk first
-                aiSupportAgent.loadKnowledgeBase().catch((error) => {
+                const loaded = await aiSupportAgent.loadKnowledgeBase().catch((error) => {
                     console.warn('[AI-AGENT] Q&A load failed:', error?.message || error);
+                    return false;
                 });
                 
-                // Then rebuild to add new messages
-                aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
-                    console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
-                });
+                // If no knowledge base exists, automatically scrape everything
+                if (!loaded) {
+                    await autoScrapeOnStartup(guild, client);
+                } else {
+                    // Otherwise just do incremental update
+                    aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
+                        console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
+                    });
+                }
+                
                 // Rebuild Q&A knowledge base every 6 hours
                 setInterval(() => {
                     aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {

@@ -143,6 +143,13 @@ This immediately stops all general chat monitoring (ticket support continues nor
 - `/agent-channel-add channel:#general` — enable monitoring in a specific channel.
 - `/agent-channel-remove channel:#general` — disable monitoring in a specific channel.
 - `/agent-rebuild-qa` — rebuild the Q&A knowledge base from message history now (also runs automatically every 6 hours).
+- `/agent-scrape-all` — **NOUVEAU**: Scrape TOUS les messages de TOUS les channels en une commande (pas de paramètres, 100% automatique). 🚀
+
+**Scraping Automatique au Démarrage:**
+- ✨ Le bot scrape automatiquement TOUS les channels au premier démarrage (si aucune knowledge base n'existe)
+- 📚 Extrait jusqu'à 1000 messages par channel
+- 🧠 Crée la base de connaissances complète sans intervention manuelle
+- ⚡ Les démarrages suivants chargent la base existante (beaucoup plus rapide)
 
 ---
 
