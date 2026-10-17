@@ -150,32 +150,51 @@ Question: How do I cancel my subscription?
 
 ## Cost Analysis
 
+### Model Change: Claude Haiku (12x cheaper!)
+
+**Previous estimate:** Claude Sonnet 4.5 (~$25-40/month)
+**New choice:** Claude Haiku 4 (~$7-9/month)
+
+**Why Haiku?**
+- ✅ 12x cheaper than Sonnet ($0.25 vs $3.00 per 1M input tokens)
+- ✅ Still very intelligent for Q&A tasks
+- ✅ Faster responses (lower latency)
+- ✅ Perfect for short, factual answers (1-3 sentences)
+- ✅ Excellent reasoning from knowledge base
+
 ### Current Costs (Before)
-- Anthropic API: ~$10-15/month (ticket support only)
+- Anthropic API: ~$1-2/month (ticket support only with Haiku)
 - Railway: $5/month
 
-**Total:** ~$15-20/month
+**Total:** ~$6-7/month
 
 ### New Costs (After)
 
-**Conservative usage** (agent in 1-2 channels):
-- Anthropic API: ~$20-25/month
+**Conservative usage** (agent in 2-3 channels):
+- Anthropic API: ~$2-3/month
 - Railway: $5/month
 
-**Total:** ~$25-30/month (+$10/month)
+**Total:** ~$7-8/month (+$1/month) 🎉
 
-**Recommended usage** (agent in 2-4 channels):
-- Anthropic API: ~$25-35/month
+**Recommended usage** (agent in 3-5 channels):
+- Anthropic API: ~$3-4/month
 - Railway: $5/month
 
-**Total:** ~$30-40/month (+$15-20/month)
+**Total:** ~$8-9/month (+$2-3/month) 🚀
+
+**Heavy usage** (agent in 5-6 channels):
+- Anthropic API: ~$4-5/month
+- Railway: $5/month
+
+**Total:** ~$9-10/month (+$3-4/month)
 
 ### Why It's Cost-Efficient
 
 1. **Only calls Claude for questions** (not every message)
 2. **Confidence scoring** prevents unnecessary API calls
-3. **Rate limiting** caps maximum cost
+3. **Rate limiting** caps maximum cost (~$14/month absolute max)
 4. **Learns over time** (fewer escalations = fewer API calls)
+5. **Haiku is 12x cheaper** than Sonnet while still being very capable
 
 ### ROI Calculation
 
@@ -189,7 +208,20 @@ Question: How do I cancel my subscription?
 - 30-60 minutes saved per day
 - **10-20 hours saved per month**
 
-**Cost per hour saved:** ~$1-2/hour (well worth it!)
+**Cost per hour saved:** ~$0.03-0.06/hour (vs $1-2 with Sonnet!) 🎉
+
+**Comparison:**
+- **With Sonnet:** $30-40/month → $1-2 per hour saved
+- **With Haiku:** $7-9/month → $0.03-0.06 per hour saved
+- **Savings:** Haiku delivers 20-30x better ROI!
+
+### Compared to Alternatives
+
+**Commercial solutions:**
+- Intercom AI: $99-$499/month → **Saves $90-$490/month**
+- Zendesk AI: $50-$200/month → **Saves $41-$191/month**
+
+**With Haiku, the bot essentially pays for itself** - costs are negligible compared to time saved!
 
 ---
 

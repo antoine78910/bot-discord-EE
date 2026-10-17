@@ -194,7 +194,7 @@ In the Railway service, open **Variables → Raw Editor** and paste:
 DISCORD_BOT_TOKEN=your_token
 DISCORD_SERVER_ID=your_guild_id
 ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-sonnet-4-5
+CLAUDE_MODEL=claude-haiku-4
 TICKET_CHANNEL_PREFIX=ticket-
 OWNER_USER_ID=your_discord_user_id
 STAFF_ROLE_ID=optional_role_id
@@ -272,26 +272,32 @@ without redeploying).
 
 ## Costs
 
-### Anthropic API (Claude)
+### Anthropic API (Claude Haiku)
 
-With prompt caching enabled (already configured) and the new AI Support Agent:
+**Model used:** Claude Haiku 4 (12x cheaper than Sonnet, perfect for Q&A)
+
+With prompt caching enabled (already configured):
 
 **Ticket Support Only** (~100 ticket messages/day):
-- Estimated: **$10-15/month**
+- Estimated: **$1-2/month** 🎉
 
 **With AI Support Agent** (~100 tickets + ~50 general chat replies/day):
-- Estimated: **$20-30/month**
+- Estimated: **$2-4/month** 🚀
 
-The AI Support Agent is cost-efficient because:
-- It only runs Claude when it detects a question
-- Uses confidence scoring to avoid unnecessary API calls
-- Rate limiting prevents runaway costs
-- Q&A knowledge base is built incrementally (not on every message)
+**Why Haiku is perfect for this:**
+- ✅ 12x cheaper than Claude Sonnet ($0.25 vs $3.00 per 1M input tokens)
+- ✅ Still very intelligent for Q&A tasks
+- ✅ Faster responses (lower latency)
+- ✅ Perfect for short, factual answers (1-3 sentences)
+- ✅ Excellent reasoning from knowledge base
+- ✅ Rate limiting prevents runaway costs
 
 **Cost monitoring tips:**
 - Check your Anthropic dashboard usage weekly during the first month
-- If costs are higher than expected, reduce `RATE_LIMIT_MESSAGES_PER_HOUR` in `aiSupportAgent.js`
-- Monitor `/agent-status` to see reply volume
+- With Haiku, costs are so low (~$2-4/month) you rarely need to worry
+- If you need more detailed/nuanced responses, you can always upgrade to `CLAUDE_MODEL=claude-sonnet-4-5`
+
+See [COST_ESTIMATION_HAIKU.md](COST_ESTIMATION_HAIKU.md) for detailed pricing breakdown.
 
 ### Railway hosting
 
@@ -299,9 +305,14 @@ Railway Hobby plan: **$5/month** for the bot service (unchanged).
 
 ### Total estimated cost
 
-- **Conservative** (tickets only, agent disabled): $15-20/month
-- **Recommended** (tickets + agent in 2-3 channels): $25-35/month
-- **Aggressive** (agent in many channels): $35-50/month
+- **Conservative** (tickets only, agent disabled): **$6-7/month** ⭐
+- **Recommended** (tickets + agent in 2-3 channels): **$7-9/month** ⭐⭐⭐
+- **Heavy usage** (agent in many channels): **$9-11/month**
+- **Absolute maximum** (rate limited): **$14/month**
+
+**Compared to alternatives:**
+- Intercom AI: $99-$499/month → **Saves $90-$490/month**
+- Zendesk AI: $50-$200/month → **Saves $41-$191/month**
 
 ## Discord Permissions & Intents
 

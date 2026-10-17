@@ -62,7 +62,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const TICKET_CHANNEL_PREFIX = (process.env.TICKET_CHANNEL_PREFIX || 'ticket-').toLowerCase();
 const OWNER_USER_ID = process.env.OWNER_USER_ID || process.env.DM_TEST_OWNER_ID;
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || process.env.TICKET_STAFF_ROLE_ID;
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4';
 const DASHBOARD_PORT = Number(process.env.PORT) || 1500;
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
