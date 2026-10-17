@@ -153,12 +153,15 @@ const AI_ESCALATION_KEYWORDS = [
 
 // === AI Support Agent (general chat monitoring) ===
 const AI_AGENT_STAFF_ALERT_CHANNEL_ID = process.env.AI_AGENT_STAFF_ALERT_CHANNEL_ID || null;
+// Auto-enable on ALL channels by default (Antoine's request)
+const AI_AGENT_AUTO_ENABLE_ALL_CHANNELS = process.env.AI_AGENT_AUTO_ENABLE_ALL_CHANNELS !== 'false';
 const AGENT_ENABLE_COMMAND = 'agent-enable';
 const AGENT_DISABLE_COMMAND = 'agent-disable';
 const AGENT_STATUS_COMMAND = 'agent-status';
 const AGENT_CHANNEL_ADD_COMMAND = 'agent-channel-add';
 const AGENT_CHANNEL_REMOVE_COMMAND = 'agent-channel-remove';
 const AGENT_REBUILD_QA_COMMAND = 'agent-rebuild-qa';
+const AGENT_INITIAL_SCRAPE_COMMAND = 'agent-initial-scrape';
 
 // === Cancellation flow ===
 const ECOM_AGENT_ROLE_ID = String(process.env.ECOM_AGENT_ROLE_ID || '1244916325294542858').trim();
@@ -1477,6 +1480,134 @@ async function handleAgentRebuildQACommand(interaction) {
     }
 }
 
+async function handleAgentInitialScrapeCommand(interaction) {
+    if (!interaction.guild) {
+        await interaction.reply({ content: 'Run this in a guild.', ephemeral: true });
+        return;
+    }
+    
+    const messagesPerChannel = interaction.options.getInteger('messages_per_channel') || 1000;
+    
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        log('AI-AGENT', 'Starting deep scrape of all channels...', { messagesPerChannel });
+        
+        const guild = interaction.guild;
+        const channels = await guild.channels.fetch();
+        const textChannels = [...channels.values()].filter(c => c.isTextBased());
+        
+        let totalMessages = 0;
+        let totalQAPairs = 0;
+        let channelsProcessed = 0;
+        
+        await interaction.editReply(`🔄 Scraping ${textChannels.length} channels (${messagesPerChannel} messages each)...\nThis will take a few minutes.`);
+        
+        for (const channel of textChannels) {
+            try {
+                // Check permissions
+                const me = guild.members.me;
+                if (!me) continue;
+                const perms = channel.permissionsFor(me);
+                if (!perms?.has('ViewChannel') || !perms?.has('ReadMessageHistory')) continue;
+                
+                log('AI-AGENT', `Scraping #${channel.name}...`);
+                
+                let fetchedCount = 0;
+                let lastId = null;
+                const channelMessages = [];
+                
+                // Fetch messages in batches
+                while (fetchedCount < messagesPerChannel) {
+                    const options = { limit: Math.min(100, messagesPerChannel - fetchedCount) };
+                    if (lastId) options.before = lastId;
+                    
+                    const batch = await channel.messages.fetch(options);
+                    if (batch.size === 0) break;
+                    
+                    channelMessages.push(...batch.values());
+                    fetchedCount += batch.size;
+                    lastId = batch.last()?.id;
+                    
+                    if (batch.size < 100) break; // No more messages
+                }
+                
+                // Extract Q&A pairs from these messages
+                const ordered = channelMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+                let pairsInChannel = 0;
+                
+                for (let i = 0; i < ordered.length - 1; i++) {
+                    const userMsg = ordered[i];
+                    if (userMsg.author.bot) continue;
+                    if (!userMsg.content?.trim()) continue;
+                    
+                    const content = userMsg.content.trim();
+                    // Check if it's a question
+                    if (!content.includes('?') && 
+                        !content.toLowerCase().match(/comment|quoi|quand|où|pourquoi|qui|quel|how|what|when|where|why|who|which|can i|help|problem|issue|error/)) {
+                        continue;
+                    }
+                    
+                    // Look for staff response
+                    for (let j = i + 1; j < Math.min(i + 5, ordered.length); j++) {
+                        const staffMsg = ordered[j];
+                        const isStaff = STAFF_ROLE_ID && staffMsg.member?.roles?.cache?.has(STAFF_ROLE_ID);
+                        const isOwner = OWNER_USER_ID && staffMsg.author?.id === OWNER_USER_ID;
+                        
+                        if ((isStaff || isOwner) && staffMsg.content?.trim() && staffMsg.content.trim().length > 20) {
+                            // Found a Q&A pair! Save it
+                            appendLearning({
+                                question: content.slice(0, 500),
+                                answer: staffMsg.content.trim().slice(0, 1000),
+                                capturedAt: new Date(userMsg.createdTimestamp).toISOString(),
+                                channelName: channel.name,
+                                source: `initial-scrape`,
+                            });
+                            pairsInChannel++;
+                            totalQAPairs++;
+                            break;
+                        }
+                    }
+                }
+                
+                totalMessages += fetchedCount;
+                channelsProcessed++;
+                
+                log('AI-AGENT', `✓ #${channel.name}: ${fetchedCount} messages, ${pairsInChannel} Q&A pairs`);
+                
+                // Update progress every 5 channels
+                if (channelsProcessed % 5 === 0) {
+                    await interaction.editReply(
+                        `🔄 Progress: ${channelsProcessed}/${textChannels.length} channels\n` +
+                        `📊 ${totalMessages} messages scanned\n` +
+                        `📚 ${totalQAPairs} Q&A pairs extracted`
+                    );
+                }
+                
+            } catch (error) {
+                log('AI-AGENT', `✗ #${channel.name}: ${error.message}`);
+            }
+        }
+        
+        // Final rebuild of Q&A knowledge base
+        await aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID);
+        
+        const finalMessage = `✅ **Initial scrape complete!**\n\n` +
+            `📊 **Stats:**\n` +
+            `- Channels processed: ${channelsProcessed}/${textChannels.length}\n` +
+            `- Messages scanned: ${totalMessages.toLocaleString()}\n` +
+            `- Q&A pairs extracted: ${totalQAPairs}\n\n` +
+            `🧠 The bot has now learned from your past conversations and will use them to answer similar questions!`;
+        
+        await interaction.editReply(finalMessage);
+        log('AI-AGENT', 'Initial scrape complete', { channelsProcessed, totalMessages, totalQAPairs });
+        
+    } catch (error) {
+        console.error('[AI-AGENT] Initial scrape failed:', error);
+        await interaction.editReply(`❌ Scrape failed: ${error?.message || 'unknown error'}`);
+    }
+}
+
 // === Slash commands ===
 function getSlashCommands() {
     return [
@@ -1570,6 +1701,16 @@ function getSlashCommands() {
             .setName(AGENT_REBUILD_QA_COMMAND)
             .setDescription('Rebuild the Q&A knowledge base from message history.')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName(AGENT_INITIAL_SCRAPE_COMMAND)
+            .setDescription('Scrape ALL messages from ALL channels (initial learning phase).')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addIntegerOption((option) =>
+                option
+                    .setName('messages_per_channel')
+                    .setDescription('Number of messages to scrape per channel (default: 1000)')
+                    .setRequired(false)
+            ),
     ];
 }
 
@@ -1614,6 +1755,31 @@ client.once(Events.ClientReady, async (readyClient) => {
     if (AI_AGENT_STAFF_ALERT_CHANNEL_ID) {
         aiSupportAgent.setStaffAlertChannel(AI_AGENT_STAFF_ALERT_CHANNEL_ID);
         log('AI-AGENT', `Staff alert channel: ${AI_AGENT_STAFF_ALERT_CHANNEL_ID}`);
+    }
+    
+    // Auto-enable agent on all text channels
+    if (AI_AGENT_AUTO_ENABLE_ALL_CHANNELS && aiClient && GUILD_ID) {
+        log('AI-AGENT', 'Auto-enabling on all channels...');
+        try {
+            const guild = await client.guilds.fetch(GUILD_ID);
+            const channels = await guild.channels.fetch();
+            let enabledCount = 0;
+            
+            for (const [id, channel] of channels) {
+                if (channel && channel.isTextBased() && !channel.name.toLowerCase().startsWith('ticket-')) {
+                    // Skip private/internal channels
+                    if (channel.name.includes('staff') || channel.name.includes('admin') || channel.name.includes('mod')) {
+                        continue;
+                    }
+                    aiSupportAgent.enableChannel(id);
+                    enabledCount++;
+                }
+            }
+            
+            log('AI-AGENT', `Auto-enabled on ${enabledCount} channels`);
+        } catch (error) {
+            console.warn('[AI-AGENT] Auto-enable failed:', error.message);
+        }
     }
     
     if (GUILD_ID) {
@@ -1676,6 +1842,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleAgentChannelRemoveCommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_REBUILD_QA_COMMAND) {
             await handleAgentRebuildQACommand(interaction);
+        } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_INITIAL_SCRAPE_COMMAND) {
+            await handleAgentInitialScrapeCommand(interaction);
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);
