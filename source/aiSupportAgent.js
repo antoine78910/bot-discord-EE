@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const storageOptimizer = require('./storageOptimizer');
 
 /**
  * AI Support Agent - Enhanced knowledge base and confidence-based responses
@@ -9,6 +10,7 @@ const path = require('path');
  * - Confidence-based responses in general channels
  * - Rate limiting and spam prevention
  * - Per-channel configuration
+ * - Persistent knowledge base with compression
  */
 
 // === Configuration ===
@@ -127,7 +129,23 @@ async function buildQAKnowledgeBase(guild, client, ownerUserId, staffRoleId) {
     console.log('[AI-AGENT] Building Q&A knowledge base from message history...');
     const startTime = Date.now();
     
-    qaKnowledgeBase = [];
+    // Try to load existing knowledge base first
+    const dataDir = process.env.DATA_DIRECTORY || path.resolve(__dirname, 'data');
+    const qaPath = path.join(dataDir, 'qa-knowledge-base.json');
+    
+    // Load existing Q&A pairs
+    let existingPairs = [];
+    try {
+        const content = await storageOptimizer.readOptimizedFile(qaPath);
+        if (content) {
+            existingPairs = JSON.parse(content);
+            console.log(`[AI-AGENT] Loaded ${existingPairs.length} existing Q&A pairs`);
+        }
+    } catch (error) {
+        console.warn('[AI-AGENT] Could not load existing Q&A base:', error.message);
+    }
+    
+    qaKnowledgeBase = [...existingPairs];
     
     try {
         const channels = await guild.channels.fetch();
@@ -135,6 +153,7 @@ async function buildQAKnowledgeBase(guild, client, ownerUserId, staffRoleId) {
             c => c.isTextBased() && !c.name.toLowerCase().startsWith('ticket-')
         );
         
+        let newPairsCount = 0;
         for (const channel of textChannels) {
             try {
                 // Check bot permissions
@@ -146,6 +165,7 @@ async function buildQAKnowledgeBase(guild, client, ownerUserId, staffRoleId) {
                 
                 const pairs = await extractQAPairsFromChannel(channel, client, ownerUserId, staffRoleId);
                 qaKnowledgeBase.push(...pairs);
+                newPairsCount += pairs.length;
                 
                 if (pairs.length > 0) {
                     console.log(`[AI-AGENT] Extracted ${pairs.length} Q&A pairs from #${channel.name}`);
@@ -155,11 +175,34 @@ async function buildQAKnowledgeBase(guild, client, ownerUserId, staffRoleId) {
             }
         }
         
-        // Sort by recency
+        // Deduplicate Q&A pairs
+        const beforeDedup = qaKnowledgeBase.length;
+        qaKnowledgeBase = storageOptimizer.deduplicateQAPairs(qaKnowledgeBase);
+        const afterDedup = qaKnowledgeBase.length;
+        
+        // Sort by recency and limit to most relevant
         qaKnowledgeBase.sort((a, b) => b.timestamp - a.timestamp);
         
+        // Limit to prevent excessive memory/storage usage
+        const maxPairs = 5000;
+        if (qaKnowledgeBase.length > maxPairs) {
+            console.log(`[AI-AGENT] Limiting knowledge base from ${qaKnowledgeBase.length} to ${maxPairs} most recent pairs`);
+            qaKnowledgeBase = qaKnowledgeBase.slice(0, maxPairs);
+        }
+        
+        // Save to disk with compression
+        try {
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+            await storageOptimizer.writeOptimizedFile(qaPath, JSON.stringify(qaKnowledgeBase, null, 2), true);
+            console.log(`[AI-AGENT] Saved knowledge base to disk (${afterDedup} pairs, compressed)`);
+        } catch (error) {
+            console.warn('[AI-AGENT] Failed to save knowledge base:', error.message);
+        }
+        
         const elapsed = Date.now() - startTime;
-        console.log(`[AI-AGENT] Q&A knowledge base built: ${qaKnowledgeBase.length} pairs in ${elapsed}ms`);
+        console.log(`[AI-AGENT] Q&A knowledge base built: ${newPairsCount} new pairs, ${beforeDedup - afterDedup} duplicates removed, ${afterDedup} total in ${elapsed}ms`);
     } catch (error) {
         console.error('[AI-AGENT] Failed to build Q&A knowledge base:', error);
     }
@@ -538,8 +581,29 @@ function getStats() {
     };
 }
 
+/**
+ * Load Q&A knowledge base from disk on startup
+ */
+async function loadKnowledgeBase() {
+    const dataDir = process.env.DATA_DIRECTORY || path.resolve(__dirname, 'data');
+    const qaPath = path.join(dataDir, 'qa-knowledge-base.json');
+    
+    try {
+        const content = await storageOptimizer.readOptimizedFile(qaPath);
+        if (content) {
+            qaKnowledgeBase = JSON.parse(content);
+            console.log(`[AI-AGENT] Loaded ${qaKnowledgeBase.length} Q&A pairs from disk`);
+            return true;
+        }
+    } catch (error) {
+        console.warn('[AI-AGENT] Could not load Q&A knowledge base:', error.message);
+    }
+    return false;
+}
+
 module.exports = {
     buildQAKnowledgeBase,
+    loadKnowledgeBase,
     handleGeneralChatMessage,
     enableChannel,
     disableChannel,

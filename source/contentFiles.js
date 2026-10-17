@@ -19,7 +19,7 @@ const PUBLIC_URL = String(
     process.env.CONTENT_PUBLIC_URL ||
         (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
 ).replace(/\/+$/, '');
-const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 14) * 24 * 60 * 60 * 1000;
+const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 7) * 24 * 60 * 60 * 1000;
 const TOKEN_RE = /^[a-f0-9]{32}$/;
 
 const MIME = {

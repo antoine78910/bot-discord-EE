@@ -320,6 +320,44 @@ Railway Hobby plan: **$5/month** for the bot service (unchanged).
 - Intercom AI: $99-$499/month → **Saves $85-$484/month**
 - Zendesk AI: $50-$200/month → **Saves $36-$185/month**
 
+## Storage Optimization
+
+The bot now includes automatic storage optimization to keep Railway volume usage under 5GB:
+
+### Features
+
+1. **Reduced Content File Retention**: Content files (videos/images) are kept for 7 days instead of 14 days (50% reduction)
+2. **Knowledge Base Compression**: Q&A knowledge base is compressed with gzip (~60-70% size reduction)
+3. **Automatic Deduplication**: Similar Q&A pairs are automatically removed (typically 10-30% reduction)
+4. **Size Limiting**: Maximum 5000 Q&A pairs (keeps most recent)
+5. **Automatic Cleanup**: Triggers at 85% capacity to free space
+6. **Storage Monitoring**: Logs usage on startup and every 6 hours
+
+### Configuration (Railway Variables)
+
+```bash
+CONTENT_FILE_TTL_DAYS=7  # Retention period for content files (default: 7 days)
+VOLUME_SIZE_GB=5         # Railway volume size (default: 5GB)
+```
+
+### Expected Storage Usage
+
+- **Before optimization:** 4GB (80% capacity) ❌
+- **After optimization:** ~2GB (40% capacity) ✅
+- **Headroom for message scraping:** 3GB available ✅
+
+See [STORAGE_OPTIMIZATION.md](STORAGE_OPTIMIZATION.md) for complete technical details.
+
+### Monitoring Logs
+
+```
+[STORAGE] Monitoring initialized
+[STORAGE] Usage: 2.1GB / 5GB (42%)
+[STORAGE] Compressed qa-knowledge-base.json (saved 1.2MB)
+[STORAGE] Deduplicated 5000 → 3500 Q&A pairs (removed 1500 duplicates)
+[STORAGE] Cleaned up 12 old content folders (freed 350MB)
+```
+
 ## Discord Permissions & Intents
 
 The bot requires these Discord intents (already configured in `index.js`):

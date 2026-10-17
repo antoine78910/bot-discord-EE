@@ -29,6 +29,7 @@ const {
     formatCsvAuditSummary,
     formatRemoveRolesSummary,
 } = require('./auditCancelledAgents');
+const storageOptimizer = require('./storageOptimizer');
 const express = require('express');
 try {
     dotenv = require('dotenv');
@@ -104,6 +105,11 @@ const HISTORY_PATH = path.resolve(DATA_DIRECTORY, 'tickets-history.json');
 const KNOWLEDGE_PATH = path.resolve(DATA_DIRECTORY, 'server-knowledge.md');
 const KNOWLEDGE_META_PATH = path.resolve(DATA_DIRECTORY, 'server-knowledge.meta.json');
 const DASHBOARD_DIRECTORY = path.resolve(__dirname, 'dashboard');
+
+// Storage optimization config
+const VOLUME_PATH = process.env.CONTENT_FILES_DIR || '/data/content-files';
+const VOLUME_SIZE = Number(process.env.VOLUME_SIZE_GB || 5) * 1024 * 1024 * 1024; // 5GB default
+const CONTENT_FILES_DIR = process.env.CONTENT_FILES_DIR || path.join(require('os').tmpdir(), 'ee-content-files');
 
 const AI_HISTORY_LIMIT = 20;
 const AI_MAX_IMAGE_MESSAGES = 3;
@@ -1772,6 +1778,15 @@ function logRuntimeTarget() {
 // === Discord event listeners ===
 client.once(Events.ClientReady, async (readyClient) => {
     log('BOT', `Logged in as ${readyClient.user.tag}`);
+    
+    // Initialize storage monitoring
+    try {
+        storageOptimizer.startStorageMonitoring(VOLUME_PATH, VOLUME_SIZE, DATA_DIRECTORY, CONTENT_FILES_DIR);
+        log('STORAGE', 'Monitoring initialized');
+    } catch (error) {
+        console.warn('[STORAGE] Failed to start monitoring:', error.message);
+    }
+    
     try {
         await registerGuildCommands();
     } catch (error) {
@@ -1830,6 +1845,12 @@ client.once(Events.ClientReady, async (readyClient) => {
             
             // Build Q&A knowledge base (new)
             if (aiClient) {
+                // Load existing knowledge base from disk first
+                aiSupportAgent.loadKnowledgeBase().catch((error) => {
+                    console.warn('[AI-AGENT] Q&A load failed:', error?.message || error);
+                });
+                
+                // Then rebuild to add new messages
                 aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
                     console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
                 });
