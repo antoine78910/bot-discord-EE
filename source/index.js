@@ -49,19 +49,29 @@ try {
 } catch {}
 
 let Anthropic;
+let OpenAI;
 try {
     Anthropic = require('@anthropic-ai/sdk');
 } catch {
-    console.warn('[AI] @anthropic-ai/sdk not installed — AI disabled.');
+    console.warn('[AI] @anthropic-ai/sdk not installed — Anthropic disabled.');
+}
+try {
+    OpenAI = require('openai');
+} catch {
+    console.warn('[AI] openai not installed — OpenAI disabled.');
 }
 
 // === Config ===
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GUILD_ID = process.env.DISCORD_SERVER_ID || process.env.ECOM_EFFICIENCY_SERVER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const TICKET_CHANNEL_PREFIX = (process.env.TICKET_CHANNEL_PREFIX || 'ticket-').toLowerCase();
 const OWNER_USER_ID = process.env.OWNER_USER_ID || process.env.DM_TEST_OWNER_ID;
 const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || process.env.TICKET_STAFF_ROLE_ID;
+// Auto-detect: prefer OpenAI if key exists, fallback to Anthropic
+const AI_PROVIDER = process.env.AI_PROVIDER || (OPENAI_API_KEY ? 'openai' : 'anthropic');
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
 const DASHBOARD_PORT = Number(process.env.PORT) || 1500;
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
@@ -201,7 +211,7 @@ const log = (scope, message, extra) =>
         ? console.log(`[${scope}] ${message}`)
         : console.log(`[${scope}] ${message}`, extra);
 
-// === Discord & Anthropic clients ===
+// === Discord & AI clients ===
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -216,14 +226,19 @@ const anthropicClient = (Anthropic && ANTHROPIC_API_KEY)
     ? new Anthropic({ apiKey: ANTHROPIC_API_KEY })
     : null;
 
-if (anthropicClient) {
+const openaiClient = (OpenAI && OPENAI_API_KEY)
+    ? new OpenAI({ apiKey: OPENAI_API_KEY })
+    : null;
+
+const aiClient = AI_PROVIDER === 'openai' ? openaiClient : anthropicClient;
+
+if (openaiClient) {
+    log('AI', `OpenAI client initialized with model: ${OPENAI_MODEL}`);
+} else if (anthropicClient) {
     log('AI', `Anthropic client initialized with model: ${CLAUDE_MODEL}`);
 } else {
-    console.warn('[AI] Anthropic client NOT initialized - AI features disabled');
-    console.warn('[AI] Missing:', {
-        hasAnthropicSDK: Boolean(Anthropic),
-        hasApiKey: Boolean(ANTHROPIC_API_KEY)
-    });
+    console.warn('[AI] No AI client initialized - AI features disabled');
+    console.warn('[AI] Set either OPENAI_API_KEY or ANTHROPIC_API_KEY');
 }
 
 const TOTP_PERIOD_SEC = 30;
@@ -832,30 +847,56 @@ async function isPreemptedByStaff(triggerMessage) {
     return false;
 }
 
-async function callClaudeForTicket(channel) {
-    if (!anthropicClient) return null;
+async function callAiForTicket(channel) {
+    if (!aiClient) return null;
     const messages = await fetchTicketHistoryForAi(channel);
     if (messages.length === 0) return null;
     if (messages[messages.length - 1].role !== 'user') return null;
 
-    const response = await anthropicClient.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: AI_MAX_OUTPUT_TOKENS,
-        system: [
-            {
-                type: 'text',
-                text: buildSystemPrompt(),
-                cache_control: { type: 'ephemeral' },
-            },
-        ],
-        messages,
-    });
+    const systemPrompt = buildSystemPrompt();
 
-    const text = (response.content || [])
-        .map((block) => block?.text || '')
-        .join('')
-        .trim();
-    return text || null;
+    if (AI_PROVIDER === 'openai' && openaiClient) {
+        // OpenAI API call
+        const openaiMessages = [
+            { role: 'system', content: systemPrompt },
+            ...messages.map(msg => ({
+                role: msg.role === 'assistant' ? 'assistant' : 'user',
+                content: typeof msg.content === 'string' ? msg.content : 
+                         (msg.content || []).map(block => block.text || block.type === 'text' ? block.text : '').join('')
+            }))
+        ];
+
+        const response = await openaiClient.chat.completions.create({
+            model: OPENAI_MODEL,
+            max_tokens: AI_MAX_OUTPUT_TOKENS,
+            temperature: 0.7,
+            messages: openaiMessages,
+        });
+
+        return response.choices[0]?.message?.content?.trim() || null;
+    } else if (anthropicClient) {
+        // Anthropic API call
+        const response = await anthropicClient.messages.create({
+            model: CLAUDE_MODEL,
+            max_tokens: AI_MAX_OUTPUT_TOKENS,
+            system: [
+                {
+                    type: 'text',
+                    text: systemPrompt,
+                    cache_control: { type: 'ephemeral' },
+                },
+            ],
+            messages,
+        });
+
+        const text = (response.content || [])
+            .map((block) => block?.text || '')
+            .join('')
+            .trim();
+        return text || null;
+    }
+
+    return null;
 }
 
 function setPendingLearning(channel, reason) {
@@ -938,8 +979,8 @@ function maybeCaptureLearningFromStaffMessage(message) {
 }
 
 async function greetNewTicketChannel(channel) {
-    if (!anthropicClient) {
-        log('AI', 'greeting skipped - no Anthropic client', { channelId: channel.id });
+    if (!aiClient) {
+        log('AI', 'greeting skipped - no AI client', { channelId: channel.id });
         return;
     }
     if (!isTicketChannel(channel)) {
@@ -1115,8 +1156,8 @@ async function handleTicketAiMessage(message) {
         return;
     }
 
-    if (!anthropicClient) {
-        console.error('[AI] anthropicClient not initialized - check ANTHROPIC_API_KEY');
+    if (!aiClient) {
+        console.error('[AI] AI client not initialized - check OPENAI_API_KEY or ANTHROPIC_API_KEY');
         return;
     }
 
@@ -1127,9 +1168,10 @@ async function handleTicketAiMessage(message) {
         return;
     }
 
-    log('AI', 'calling Claude for response', { 
+    log('AI', 'calling AI for response', { 
         channelId: message.channel.id,
-        model: CLAUDE_MODEL 
+        provider: AI_PROVIDER,
+        model: AI_PROVIDER === 'openai' ? OPENAI_MODEL : CLAUDE_MODEL
     });
 
     aiInFlightTickets.add(message.channel.id);
@@ -1138,14 +1180,15 @@ async function handleTicketAiMessage(message) {
 
         let reply;
         try {
-            reply = await callClaudeForTicket(message.channel);
-            log('AI', 'Claude response received', { 
+            reply = await callAiForTicket(message.channel);
+            log('AI', 'AI response received', { 
                 channelId: message.channel.id,
                 replyLength: reply?.length || 0 
             });
         } catch (error) {
-            console.error('[AI] Claude call failed:', error?.message || error, {
-                model: CLAUDE_MODEL,
+            console.error('[AI] AI call failed:', error?.message || error, {
+                provider: AI_PROVIDER,
+                model: AI_PROVIDER === 'openai' ? OPENAI_MODEL : CLAUDE_MODEL,
                 channelId: message.channel.id
             });
             if (!(await isPreemptedByStaff(message))) {
@@ -1588,7 +1631,7 @@ client.once(Events.ClientReady, async (readyClient) => {
             }, KNOWLEDGE_REBUILD_INTERVAL_MS);
             
             // Build Q&A knowledge base (new)
-            if (anthropicClient) {
+            if (aiClient) {
                 aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
                     console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
                 });
@@ -1661,11 +1704,14 @@ client.on(Events.MessageCreate, (message) => {
     });
     
     // Handle general chat monitoring (new functionality)
-    if (anthropicClient) {
+    if (aiClient) {
         aiSupportAgent.handleGeneralChatMessage(message, {
             client,
             anthropicClient,
+            openaiClient,
+            provider: AI_PROVIDER,
             model: CLAUDE_MODEL,
+            openaiModel: OPENAI_MODEL,
             ownerUserId: OWNER_USER_ID,
             staffRoleId: STAFF_ROLE_ID,
             faqText: loadFaqText(),

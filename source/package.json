@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
     "@supabase/supabase-js": "^2.55.0",
+    "openai": "^4.78.0",
     "otplib": "^13.4.0",
     "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",

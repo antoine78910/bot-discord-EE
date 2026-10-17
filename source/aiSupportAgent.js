@@ -268,11 +268,13 @@ function recordReply(channelId) {
 }
 
 /**
- * Ask Claude for confidence score on answering a question
+ * Ask AI for confidence score on answering a question
+ * Supports both OpenAI and Anthropic
  */
-async function getAnswerWithConfidence(message, systemPrompt, anthropicClient, model) {
+async function getAnswerWithConfidence(message, systemPrompt, aiConfig) {
     try {
         const content = message.content.trim();
+        const { anthropicClient, openaiClient, provider, openaiModel, claudeModel } = aiConfig;
         
         const prompt = `${systemPrompt}
 
@@ -290,16 +292,32 @@ Format your response EXACTLY as:
 
 User question: ${content}`;
 
-        const response = await anthropicClient.messages.create({
-            model,
-            max_tokens: 500,
-            messages: [{
-                role: 'user',
-                content: prompt,
-            }],
-        });
+        let text;
         
-        const text = response.content.map(block => block?.text || '').join('').trim();
+        if (provider === 'openai' && openaiClient) {
+            const response = await openaiClient.chat.completions.create({
+                model: openaiModel,
+                max_tokens: 500,
+                temperature: 0.7,
+                messages: [
+                    { role: 'system', content: prompt },
+                    { role: 'user', content: content }
+                ],
+            });
+            text = response.choices[0]?.message?.content?.trim() || '';
+        } else if (anthropicClient) {
+            const response = await anthropicClient.messages.create({
+                model: claudeModel,
+                max_tokens: 500,
+                messages: [{
+                    role: 'user',
+                    content: prompt,
+                }],
+            });
+            text = response.content.map(block => block?.text || '').join('').trim();
+        } else {
+            return null;
+        }
         
         // Parse response
         const answerMatch = text.match(/<answer>([\s\S]*?)<\/answer>/);
@@ -385,7 +403,14 @@ async function handleGeneralChatMessage(message, config) {
     
     // Get answer with confidence
     const systemPrompt = buildSystemPrompt(config);
-    const result = await getAnswerWithConfidence(message, systemPrompt, anthropicClient, model);
+    const aiConfig = {
+        anthropicClient: config.anthropicClient,
+        openaiClient: config.openaiClient,
+        provider: config.provider,
+        openaiModel: config.openaiModel,
+        claudeModel: config.model,
+    };
+    const result = await getAnswerWithConfidence(message, systemPrompt, aiConfig);
     
     if (!result) return;
     
