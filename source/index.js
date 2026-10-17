@@ -119,6 +119,8 @@ const AUDIT_CANCELLED_AGENTS_COMMAND = 'audit-cancelled-agents';
 const REMOVE_CANCELLED_AGENTS_COMMAND = 'remove-cancelled-agents';
 const LEARNING_MIN_ANSWER_CHARS = 25;
 const LEARNING_MAX_ANSWER_CHARS = 1500;
+const LEARNINGS_MAX_ENTRIES = 500; // Keep only last 500 Q&A pairs
+const LEARNINGS_MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB max
 const HISTORY_SAVE_DEBOUNCE_MS = 500;
 const KNOWLEDGE_PER_CHANNEL_LIMIT = 30;
 const KNOWLEDGE_MAX_CHARS = 80000;
@@ -571,8 +573,27 @@ function appendLearning({ question, answer, capturedAt, channelName, source }) {
             fs.writeFileSync(LEARNINGS_PATH, '# Learnings — captured Q&A pairs\n\n', 'utf8');
         } catch {}
     }
-    const cleanQ = (question || '').trim().replace(/\r?\n+/g, ' ');
-    const cleanA = (answer || '').trim();
+    
+    // Rotate learnings file if it gets too large
+    try {
+        const stats = fs.statSync(LEARNINGS_PATH);
+        if (stats.size > LEARNINGS_MAX_FILE_SIZE) {
+            log('LEARN', `File size ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds limit, rotating...`);
+            const content = fs.readFileSync(LEARNINGS_PATH, 'utf8');
+            const entries = content.split('---').filter(e => e.trim());
+            
+            // Keep only last N entries
+            const header = '# Learnings — captured Q&A pairs\n\n';
+            const recentEntries = entries.slice(-LEARNINGS_MAX_ENTRIES);
+            fs.writeFileSync(LEARNINGS_PATH, header + recentEntries.join('---'), 'utf8');
+            log('LEARN', `Rotated, kept last ${recentEntries.length} entries`);
+        }
+    } catch (error) {
+        console.warn('[LEARN] rotation check failed:', error.message);
+    }
+    
+    const cleanQ = (question || '').trim().replace(/\r?\n+/g, ' ').slice(0, 500);
+    const cleanA = (answer || '').trim().slice(0, 1000);
     const entry = [
         '',
         '---',
@@ -1487,12 +1508,22 @@ async function handleAgentInitialScrapeCommand(interaction) {
         return;
     }
     
-    const messagesPerChannel = interaction.options.getInteger('messages_per_channel') || 1000;
+    const messagesPerChannel = Math.min(
+        interaction.options.getInteger('messages_per_channel') || 500,
+        500 // Hard limit to prevent volume overflow
+    );
     
     await interaction.deferReply({ ephemeral: true });
     
     try {
         log('AI-AGENT', 'Starting deep scrape of all channels...', { messagesPerChannel });
+        
+        // Check volume space before starting
+        const learningsSize = fs.existsSync(LEARNINGS_PATH) ? fs.statSync(LEARNINGS_PATH).size : 0;
+        if (learningsSize > LEARNINGS_MAX_FILE_SIZE) {
+            await interaction.editReply(`⚠️ Learnings file is already at max size (${(learningsSize / 1024 / 1024).toFixed(2)}MB). Please wait for next rotation or contact admin.`);
+            return;
+        }
         
         const guild = interaction.guild;
         const channels = await guild.channels.fetch();
