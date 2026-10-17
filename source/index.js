@@ -62,7 +62,7 @@ try {
 }
 
 // === Config ===
-const TOKEN = process.env.DISCORD_BOT_TOKEN;
+const TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.CONTENT_BOT_TOKEN;
 const GUILD_ID = process.env.DISCORD_SERVER_ID || process.env.ECOM_EFFICIENCY_SERVER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -73,7 +73,8 @@ const STAFF_ROLE_ID = process.env.STAFF_ROLE_ID || process.env.TICKET_STAFF_ROLE
 const AI_PROVIDER = process.env.AI_PROVIDER || (OPENAI_API_KEY ? 'openai' : 'anthropic');
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
-const DASHBOARD_PORT = Number(process.env.PORT) || 1500;
+const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT) || 1500;
+const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== 'false';
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
 /** AdsPower TOTP “Get the code” panel (same Railway service as ticket AI). */
@@ -1971,10 +1972,15 @@ app.get('/api/tickets/:id', (req, res) => {
 
 app.use(express.static(DASHBOARD_DIRECTORY));
 
-app.listen(DASHBOARD_PORT, () => {
-    log('DASHBOARD', `http://localhost:${DASHBOARD_PORT}`);
+if (DASHBOARD_ENABLED) {
+    app.listen(DASHBOARD_PORT, () => {
+        log('DASHBOARD', `http://localhost:${DASHBOARD_PORT}`);
+        logRuntimeTarget();
+    });
+} else {
+    log('DASHBOARD', 'Dashboard disabled (DASHBOARD_ENABLED=false or running with content bot)');
     logRuntimeTarget();
-});
+}
 
 // === Boot ===
 if (TOKEN) {
