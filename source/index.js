@@ -216,6 +216,16 @@ const anthropicClient = (Anthropic && ANTHROPIC_API_KEY)
     ? new Anthropic({ apiKey: ANTHROPIC_API_KEY })
     : null;
 
+if (anthropicClient) {
+    log('AI', `Anthropic client initialized with model: ${CLAUDE_MODEL}`);
+} else {
+    console.warn('[AI] Anthropic client NOT initialized - AI features disabled');
+    console.warn('[AI] Missing:', {
+        hasAnthropicSDK: Boolean(Anthropic),
+        hasApiKey: Boolean(ANTHROPIC_API_KEY)
+    });
+}
+
 const TOTP_PERIOD_SEC = 30;
 
 function totpSecondsLeftInPeriod(epochSec, period = TOTP_PERIOD_SEC) {
@@ -928,12 +938,30 @@ function maybeCaptureLearningFromStaffMessage(message) {
 }
 
 async function greetNewTicketChannel(channel) {
-    if (!anthropicClient) return;
-    if (!isTicketChannel(channel)) return;
-    if (aiGreetedTickets.has(channel.id)) return;
+    if (!anthropicClient) {
+        log('AI', 'greeting skipped - no Anthropic client', { channelId: channel.id });
+        return;
+    }
+    if (!isTicketChannel(channel)) {
+        log('AI', 'greeting skipped - not a ticket channel', { channelName: channel.name });
+        return;
+    }
+    if (aiGreetedTickets.has(channel.id)) {
+        log('AI', 'greeting skipped - already greeted in session', { channelId: channel.id });
+        return;
+    }
     aiGreetedTickets.add(channel.id);
 
-    if (ticketHistory.tickets[channel.id]?.greeted) return;
+    if (ticketHistory.tickets[channel.id]?.greeted) {
+        log('AI', 'greeting skipped - already greeted in history', { channelId: channel.id });
+        return;
+    }
+
+    log('AI', 'preparing to greet new ticket', { 
+        channelId: channel.id,
+        channelName: channel.name,
+        delayMs: AI_GREETING_DELAY_MS 
+    });
 
     setTimeout(async () => {
         if (ticketHistory.tickets[channel.id]?.greeted) return;
@@ -963,6 +991,10 @@ async function greetNewTicketChannel(channel) {
                 content: greeting,
                 createdAt: new Date(sent.createdTimestamp || Date.now()).toISOString(),
                 kind: 'greeting',
+            });
+            log('AI', 'greeting sent successfully', { 
+                channelId: channel.id,
+                channelName: channel.name 
             });
         } catch (error) {
             console.warn('[AI] greeting failed:', error.message);
@@ -1008,12 +1040,27 @@ async function handleTicketAiMessage(message) {
         return;
     }
 
-    if (aiDisabledTickets.has(message.channel.id)) return;
-    if (aiInFlightTickets.has(message.channel.id)) return;
+    if (aiDisabledTickets.has(message.channel.id)) {
+        log('AI', 'ticket AI is disabled', { channelId: message.channel.id });
+        return;
+    }
+    if (aiInFlightTickets.has(message.channel.id)) {
+        log('AI', 'AI reply already in progress', { channelId: message.channel.id });
+        return;
+    }
 
     const content = message.content || '';
     const imageAttachments = collectImageAttachments(message);
-    if (!content.trim() && imageAttachments.length === 0) return;
+    if (!content.trim() && imageAttachments.length === 0) {
+        log('AI', 'empty message, skipping', { channelId: message.channel.id });
+        return;
+    }
+
+    log('AI', 'processing user message', { 
+        channelId: message.channel.id,
+        channelName: message.channel.name,
+        preview: content.slice(0, 50)
+    });
 
     if (isOtpCodeRequest(content)) {
         const replyText = buildOtpAppReply();
@@ -1031,6 +1078,7 @@ async function handleTicketAiMessage(message) {
                 createdAt: new Date(sent.createdTimestamp || Date.now()).toISOString(),
                 kind: 'otp_redirect',
             });
+            log('AI', 'OTP redirect sent', { channelId: message.channel.id });
         } catch (error) {
             console.warn('[AI] otp redirect send failed:', error.message);
         }
@@ -1067,13 +1115,22 @@ async function handleTicketAiMessage(message) {
         return;
     }
 
-    if (!anthropicClient) return;
+    if (!anthropicClient) {
+        console.error('[AI] anthropicClient not initialized - check ANTHROPIC_API_KEY');
+        return;
+    }
 
     const lower = content.toLowerCase();
     if (AI_ESCALATION_KEYWORDS.some((keyword) => lower.includes(keyword))) {
+        log('AI', 'escalation keyword detected', { channelId: message.channel.id });
         await escalateTicket(message.channel, 'User asked for a human.');
         return;
     }
+
+    log('AI', 'calling Claude for response', { 
+        channelId: message.channel.id,
+        model: CLAUDE_MODEL 
+    });
 
     aiInFlightTickets.add(message.channel.id);
     try {
@@ -1082,14 +1139,24 @@ async function handleTicketAiMessage(message) {
         let reply;
         try {
             reply = await callClaudeForTicket(message.channel);
+            log('AI', 'Claude response received', { 
+                channelId: message.channel.id,
+                replyLength: reply?.length || 0 
+            });
         } catch (error) {
-            console.error('[AI] Claude call failed:', error?.message || error);
+            console.error('[AI] Claude call failed:', error?.message || error, {
+                model: CLAUDE_MODEL,
+                channelId: message.channel.id
+            });
             if (!(await isPreemptedByStaff(message))) {
                 await escalateTicket(message.channel, `Claude call failed: ${error?.message || error}`);
             }
             return;
         }
-        if (!reply) return;
+        if (!reply) {
+            log('AI', 'no reply from Claude', { channelId: message.channel.id });
+            return;
+        }
 
         if (await isPreemptedByStaff(message)) {
             aiDisabledTickets.add(message.channel.id);
@@ -1112,6 +1179,10 @@ async function handleTicketAiMessage(message) {
                 authorName: client.user?.username || 'AI',
                 content: cleaned,
                 createdAt: new Date(sent.createdTimestamp || Date.now()).toISOString(),
+            });
+            log('AI', 'reply sent successfully', { 
+                channelId: message.channel.id,
+                shouldEscalate 
             });
         }
 
