@@ -116,8 +116,24 @@ function sendFile(req, res, filePath, name, download) {
     else fs.createReadStream(filePath).pipe(res);
 }
 
+/** Extra endpoints served by the same HTTP server, keyed by "METHOD /path". */
+const routes = new Map();
+
+function addRoute(method, pathname, handler) {
+    routes.set(`${method} ${pathname}`, handler);
+}
+
 function handleRequest(req, res) {
     const url = new URL(req.url, 'http://localhost');
+    const route = routes.get(`${req.method} ${url.pathname}`);
+    if (route) {
+        Promise.resolve(route(req, res)).catch((error) => {
+            console.warn(`[CONTENT-FILES] ${url.pathname} failed:`, error?.message || error);
+            if (!res.headersSent) res.writeHead(500);
+            res.end();
+        });
+        return;
+    }
     if (url.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('ok');
@@ -182,4 +198,4 @@ function startFileServer() {
     setInterval(cleanupExpired, 6 * 60 * 60 * 1000).unref();
 }
 
-module.exports = { isHostingEnabled, publishFiles, startFileServer };
+module.exports = { addRoute, isHostingEnabled, publishFiles, startFileServer };

@@ -27,6 +27,7 @@ const { startFileServer } = require('./contentFiles');
 const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
 const { startPaymentProofs } = require('./paymentProofs');
 const { getManualPostCommands, handleManualPostCommand } = require('./manualPost');
+const { handleUgcReviewInteraction, startUgcReview } = require('./ugcReview');
 const {
     handleCreatorInteraction,
     publishCreatorChannels,
@@ -47,6 +48,7 @@ if (!TOKEN) {
 startFileServer();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+startUgcReview(client);
 
 async function registerCommands() {
     const commands = [
@@ -101,6 +103,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             return;
         }
         if (await handleManualPostCommand(interaction)) return;
+        if (await handleUgcReviewInteraction(interaction)) return;
         if (await handlePayoutInteraction(interaction)) return;
         if (await handleCreatorInteraction(interaction)) return;
         await handlePanelInteraction(interaction);
