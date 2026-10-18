@@ -30,6 +30,7 @@ const {
     formatRemoveRolesSummary,
 } = require('./auditCancelledAgents');
 const storageOptimizer = require('./storageOptimizer');
+const { getManualPostCommands, handleManualPostCommand } = require('./manualPost');
 const express = require('express');
 try {
     dotenv = require('dotenv');
@@ -1846,6 +1847,7 @@ function getSlashCommands() {
             .setName(AGENT_INITIAL_SCRAPE_COMMAND)
             .setDescription('Scrape TOUS les messages de TOUS les channels (apprentissage complet automatique)')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        ...getManualPostCommands(),
     ];
 }
 
@@ -2001,6 +2003,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await handleAgentRebuildQACommand(interaction);
         } else if (interaction.isChatInputCommand() && interaction.commandName === AGENT_INITIAL_SCRAPE_COMMAND) {
             await handleAgentInitialScrapeCommand(interaction);
+        } else if (await handleManualPostCommand(interaction)) {
+            // Manual post commands (/post-proof, /say) handled
         }
     } catch (error) {
         console.error('[BOT] interaction error:', error);
