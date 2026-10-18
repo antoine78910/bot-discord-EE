@@ -464,18 +464,42 @@ function handleOf(value) {
 function loadStore() {
     if (storeLoaded) return;
     storeLoaded = true;
+    
+    // Ensure parent directory exists
     try {
+        fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
+    } catch (error) {
+        console.warn('[CREATOR] Could not create store directory:', error?.message || error);
+    }
+    
+    try {
+        if (!fs.existsSync(STORE_PATH)) {
+            console.log('[CREATOR] Store file does not exist yet, starting fresh.');
+            registrations = new Map();
+            return;
+        }
+        
         const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
         const list = Array.isArray(raw.registrations) ? raw.registrations : [];
         registrations = new Map(list.filter((row) => row?.discordId).map((row) => [String(row.discordId), row]));
-    } catch {
+        console.log(`[CREATOR] Loaded ${registrations.size} registration(s) from ${STORE_PATH}`);
+    } catch (error) {
+        console.warn('[CREATOR] Could not load store, starting fresh:', error?.message || error);
         registrations = new Map();
     }
 }
 
 function saveStore() {
-    fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
-    fs.writeFileSync(STORE_PATH, JSON.stringify({ registrations: [...registrations.values()] }, null, 2));
+    try {
+        fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
+        const data = JSON.stringify({ registrations: [...registrations.values()] }, null, 2);
+        fs.writeFileSync(STORE_PATH, data, 'utf8');
+        console.log(`[CREATOR] Saved ${registrations.size} registration(s) to ${STORE_PATH}`);
+    } catch (error) {
+        console.error('[CREATOR] FAILED to save store:', error?.message || error);
+        console.error('[CREATOR] Store path:', STORE_PATH);
+        console.error('[CREATOR] Data would be lost on restart!');
+    }
 }
 
 function canReview(interaction) {
@@ -625,8 +649,13 @@ async function fillDiscordName(client, record) {
 
 async function syncRegistrationLog(client) {
     loadStore();
+    const initialSize = registrations.size;
+    
     const channel = await client.channels.fetch(REGISTRATION_LOG_CHANNEL_ID).catch(() => null);
-    if (!channel?.isTextBased?.() || !channel.messages?.fetch) return;
+    if (!channel?.isTextBased?.() || !channel.messages?.fetch) {
+        console.warn('[CREATOR] Registration log channel not accessible');
+        return;
+    }
 
     const messages = [];
     let before;
@@ -662,7 +691,14 @@ async function syncRegistrationLog(client) {
         await fillDiscordName(client, record);
         fetched += 1;
     }
-    saveStore();
+    
+    // Save if we found new registrations
+    if (registrations.size > initialSize) {
+        console.log(`[CREATOR] Found ${registrations.size - initialSize} new registration(s) from Discord messages`);
+        saveStore();
+    } else if (registrations.size > 0) {
+        console.log(`[CREATOR] Confirmed ${registrations.size} registration(s) from Discord log`);
+    }
 
     for (const [discordId, message] of latest) {
         const record = registrations.get(discordId);
