@@ -19,7 +19,7 @@ const PUBLIC_URL = String(
     process.env.CONTENT_PUBLIC_URL ||
         (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
 ).replace(/\/+$/, '');
-const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 7) * 24 * 60 * 60 * 1000;
+const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 5) * 24 * 60 * 60 * 1000; // Default 5 days (was 7)
 const TOKEN_RE = /^[a-f0-9]{32}$/;
 
 const MIME = {
@@ -41,14 +41,47 @@ function fileUrl(token, name, download = false) {
 
 /** Copies the files into a fresh private folder. Returns { page, files: [{ name, url, download }] }. */
 async function publishFiles(paths, title) {
+    // Emergency cleanup if we're running low on space
+    try {
+        await cleanupExpired();
+    } catch (error) {
+        console.warn('[CONTENT-FILES] Pre-publish cleanup failed:', error?.message || error);
+    }
+    
     const token = crypto.randomBytes(16).toString('hex');
     const dir = path.join(FILES_DIR, token);
-    await fs.promises.mkdir(dir, { recursive: true });
+    
+    try {
+        await fs.promises.mkdir(dir, { recursive: true });
+    } catch (error) {
+        // If mkdir fails due to space, try aggressive cleanup
+        if (error?.code === 'ENOSPC') {
+            console.error('[CONTENT-FILES] 🚨 DISK FULL - Running emergency cleanup...');
+            await emergencyCleanup();
+            // Retry mkdir
+            await fs.promises.mkdir(dir, { recursive: true });
+        } else {
+            throw error;
+        }
+    }
+    
     const names = [];
     for (const source of paths) {
         const name = path.basename(source);
-        await fs.promises.copyFile(source, path.join(dir, name));
-        names.push(name);
+        try {
+            await fs.promises.copyFile(source, path.join(dir, name));
+            names.push(name);
+        } catch (error) {
+            // If copy fails due to space, emergency cleanup and retry
+            if (error?.code === 'ENOSPC') {
+                console.error('[CONTENT-FILES] 🚨 DISK FULL during copy - Emergency cleanup...');
+                await emergencyCleanup();
+                await fs.promises.copyFile(source, path.join(dir, name));
+                names.push(name);
+            } else {
+                throw error;
+            }
+        }
     }
     await fs.promises.writeFile(
         path.join(dir, 'meta.json'),
@@ -172,12 +205,86 @@ function handleRequest(req, res) {
 async function cleanupExpired() {
     const entries = await fs.promises.readdir(FILES_DIR, { withFileTypes: true }).catch(() => []);
     const now = Date.now();
+    let cleaned = 0;
+    let freedSpace = 0;
+    
     for (const entry of entries) {
         if (!entry.isDirectory() || !TOKEN_RE.test(entry.name)) continue;
         const dir = path.join(FILES_DIR, entry.name);
         const stat = await fs.promises.stat(dir).catch(() => null);
-        if (stat && now - stat.mtimeMs > TTL_MS) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+        if (stat && now - stat.mtimeMs > TTL_MS) {
+            try {
+                const size = await getDirectorySize(dir);
+                await fs.promises.rm(dir, { recursive: true, force: true });
+                cleaned++;
+                freedSpace += size;
+            } catch (error) {
+                console.warn('[CONTENT-FILES] Could not cleanup', entry.name, ':', error?.message);
+            }
+        }
     }
+    
+    if (cleaned > 0) {
+        console.log(`[CONTENT-FILES] Cleaned ${cleaned} expired folders (freed ${formatSize(freedSpace)})`);
+    }
+}
+
+async function emergencyCleanup() {
+    console.log('[CONTENT-FILES] 🚨 EMERGENCY CLEANUP - Removing ALL files older than 3 days...');
+    const entries = await fs.promises.readdir(FILES_DIR, { withFileTypes: true }).catch(() => []);
+    const now = Date.now();
+    const emergencyTTL = 3 * 24 * 60 * 60 * 1000; // 3 days
+    let cleaned = 0;
+    let freedSpace = 0;
+    
+    for (const entry of entries) {
+        if (!entry.isDirectory() || !TOKEN_RE.test(entry.name)) continue;
+        const dir = path.join(FILES_DIR, entry.name);
+        const stat = await fs.promises.stat(dir).catch(() => null);
+        if (stat && now - stat.mtimeMs > emergencyTTL) {
+            try {
+                const size = await getDirectorySize(dir);
+                await fs.promises.rm(dir, { recursive: true, force: true });
+                cleaned++;
+                freedSpace += size;
+            } catch (error) {
+                console.warn('[CONTENT-FILES] Emergency cleanup failed for', entry.name, ':', error?.message);
+            }
+        }
+    }
+    
+    console.log(`[CONTENT-FILES] 🚨 Emergency cleanup: removed ${cleaned} folders (freed ${formatSize(freedSpace)})`);
+    
+    if (cleaned === 0) {
+        console.error('[CONTENT-FILES] ⚠️  Emergency cleanup found nothing to remove. Volume may need manual intervention.');
+    }
+}
+
+async function getDirectorySize(dirPath) {
+    let totalSize = 0;
+    try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            if (entry.isFile()) {
+                const stat = await fs.promises.stat(fullPath);
+                totalSize += stat.size;
+            } else if (entry.isDirectory()) {
+                totalSize += await getDirectorySize(fullPath);
+            }
+        }
+    } catch (error) {
+        // Ignore errors
+    }
+    return totalSize;
+}
+
+function formatSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
 function startFileServer() {
@@ -193,9 +300,21 @@ function startFileServer() {
         }
     }).listen(port, () => {
         console.log(`[CONTENT-FILES] Serving ${FILES_DIR} on :${port} → ${PUBLIC_URL || '(no public URL, links disabled)'}`);
+        console.log(`[CONTENT-FILES] TTL: ${Math.round(TTL_MS / 86400000)} days`);
     });
-    cleanupExpired();
-    setInterval(cleanupExpired, 6 * 60 * 60 * 1000).unref();
+    
+    // Aggressive cleanup on startup
+    console.log('[CONTENT-FILES] Running startup cleanup...');
+    cleanupExpired().catch((error) => {
+        console.warn('[CONTENT-FILES] Startup cleanup failed:', error?.message || error);
+    });
+    
+    // Regular cleanup every 2 hours (more frequent than before)
+    setInterval(() => {
+        cleanupExpired().catch((error) => {
+            console.warn('[CONTENT-FILES] Periodic cleanup failed:', error?.message || error);
+        });
+    }, 2 * 60 * 60 * 1000).unref();
 }
 
 module.exports = { addRoute, isHostingEnabled, publishFiles, startFileServer };
