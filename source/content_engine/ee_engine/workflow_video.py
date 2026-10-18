@@ -343,20 +343,17 @@ def _youry():
 
 
 def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPick:
-    """Hook video from one of three equally likely pools (YouRy hooks, workflow hook videos,
+    """Hook video from one of FOUR equally likely pools (YouRy hooks, hook videos, hook videos2,
     katching clips), workflow music (else YouRy's), workflow text hooks.
     `exclude` keeps the clip already used as the ending out of the hook slot."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
     
-    # Combine hook videos from both "hook videos" and "hook videos2" folders
-    workflow_hooks = ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT)
-    if HOOK_VIDEOS_DIR2.is_dir():
-        workflow_hooks.extend(ca._list_usable_files(HOOK_VIDEOS_DIR2, ca.VIDEO_EXT))
-    
+    # Keep hook videos folders SEPARATE for equal probability selection
     hook_pools = {
         "youry": ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT),
-        "workflow": workflow_hooks,
+        "hook_videos": ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT),
+        "hook_videos2": ca._list_usable_files(HOOK_VIDEOS_DIR2, ca.VIDEO_EXT) if HOOK_VIDEOS_DIR2.is_dir() else [],
         "katching": _clips(BROAD_DIR).get("katching", []),
     }
     blocked = set(exclude or [])
