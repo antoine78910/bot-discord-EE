@@ -11,7 +11,7 @@ import random
 
 from PIL import Image, ImageChops, ImageEnhance
 
-MAX_ROTATION_DEG = 0.35
+MAX_ROTATION_DEG = 0.6  # Increased from 0.35 for more variation
 
 
 def cover_scale(width: int, height: int, angle_rad: float) -> float:
@@ -25,19 +25,21 @@ def vary_image(image: Image.Image, rng: random.Random) -> Image.Image:
     width, height = img.size
 
     # Colorimetry: tiny white-balance shift + saturation / contrast / brightness.
-    warm = rng.uniform(-0.018, 0.018)
+    # More aggressive for better uniqueness on social platforms
+    warm = rng.uniform(-0.035, 0.035)  # Increased from -0.018, 0.018
     r, g, b = img.split()
     r = r.point(lambda v: min(255, round(v * (1 + warm))))
     b = b.point(lambda v: min(255, round(v * (1 - warm))))
     img = Image.merge("RGB", (r, g, b))
-    img = ImageEnhance.Color(img).enhance(rng.uniform(0.95, 1.06))
-    img = ImageEnhance.Contrast(img).enhance(rng.uniform(0.97, 1.04))
-    img = ImageEnhance.Brightness(img).enhance(rng.uniform(0.98, 1.025))
+    img = ImageEnhance.Color(img).enhance(rng.uniform(0.92, 1.10))  # Increased range
+    img = ImageEnhance.Contrast(img).enhance(rng.uniform(0.95, 1.06))  # Increased range
+    img = ImageEnhance.Brightness(img).enhance(rng.uniform(0.96, 1.04))  # Increased range
 
     # Axis: one affine resample (rotation + cover zoom + small offset).
+    # More aggressive variations for better uniqueness
     angle = math.radians(rng.uniform(-MAX_ROTATION_DEG, MAX_ROTATION_DEG))
     need = cover_scale(width, height, angle)
-    scale = need + rng.uniform(0.004, 0.014)
+    scale = need + rng.uniform(0.008, 0.025)  # Increased zoom range
     slack = (scale - need) * min(width, height) / 2
     tx, ty = rng.uniform(-slack, slack), rng.uniform(-slack, slack)
     cx, cy = width / 2, height / 2
@@ -50,15 +52,17 @@ def vary_image(image: Image.Image, rng: random.Random) -> Image.Image:
         resample=Image.Resampling.BICUBIC,
     )
 
-    # Pixels: faint gaussian grain (sigma 1-2 levels), invisible at JPEG q95.
-    grain = Image.effect_noise((width, height), rng.uniform(1.0, 2.0)).convert("RGB")
+    # Pixels: faint gaussian grain (sigma 1-3 levels), invisible at JPEG q95.
+    # Increased grain for more variation
+    grain = Image.effect_noise((width, height), rng.uniform(1.5, 3.0)).convert("RGB")  # Increased range
     return ImageChops.add(img, grain, scale=1.0, offset=-128)
 
 
 def video_variation_filter(rng: random.Random) -> str:
-    """Extra FFmpeg filters (hue / gamma / static grain) appended after the existing eq/rotate/scale."""
+    """Extra FFmpeg filters (hue / gamma / static grain) appended after the existing eq/rotate/scale.
+    More aggressive variations for better uniqueness on social platforms."""
     return (
-        f"hue=h={rng.uniform(-4.0, 4.0):.2f}:s={rng.uniform(0.97, 1.04):.3f},"
-        f"eq=gamma={rng.uniform(0.97, 1.03):.3f},"
-        f"noise=all_seed={rng.randint(1, 2**30)}:alls={rng.uniform(1.0, 2.2):.2f}:allf=u"
+        f"hue=h={rng.uniform(-8.0, 8.0):.2f}:s={rng.uniform(0.94, 1.08):.3f},"
+        f"eq=gamma={rng.uniform(0.94, 1.06):.3f},"
+        f"noise=all_seed={rng.randint(1, 2**30)}:alls={rng.uniform(1.5, 3.0):.2f}:allf=u"
     )

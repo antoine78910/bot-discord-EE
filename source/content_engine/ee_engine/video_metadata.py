@@ -358,21 +358,21 @@ def _duration(probe: dict) -> float:
 
 def _random_variation(rng: random.Random) -> VariationParams:
     return VariationParams(
-        zoom=rng.uniform(1.02, 1.06),
+        zoom=rng.uniform(1.025, 1.07),  # Increased zoom range
         pan_x_ratio=rng.uniform(0.0, 1.0),
         pan_y_ratio=rng.uniform(0.0, 1.0),
-        rotation_deg=rng.uniform(-0.45, 0.45),
-        saturation=rng.uniform(0.9, 1.12),
-        contrast=rng.uniform(0.94, 1.08),
-        brightness=rng.uniform(-0.05, 0.05),
-        hue_deg=rng.uniform(-6.0, 6.0),
-        noise_level=rng.uniform(1.0, 3.0),
-        speed=rng.uniform(0.985, 1.015),
-        start_trim=rng.uniform(0.05, 0.2),
-        end_trim=rng.uniform(0.1, 0.35),
-        crf=rng.choice([16, 17, 18]),
-        preset=rng.choice(["medium", "fast"]),
-        audio_volume=rng.uniform(0.97, 1.03),
+        rotation_deg=rng.uniform(-0.65, 0.65),  # Increased rotation
+        saturation=rng.uniform(0.87, 1.16),  # More aggressive
+        contrast=rng.uniform(0.91, 1.11),  # More aggressive
+        brightness=rng.uniform(-0.08, 0.08),  # More aggressive
+        hue_deg=rng.uniform(-10.0, 10.0),  # Increased from -6, 6
+        noise_level=rng.uniform(1.5, 4.2),  # More grain
+        speed=rng.uniform(0.975, 1.025),  # More speed variation
+        start_trim=rng.uniform(0.08, 0.35),  # More trimming
+        end_trim=rng.uniform(0.15, 0.5),  # More trimming
+        crf=rng.choice([15, 16, 17, 18, 19]),  # Variable quality
+        preset=rng.choice(["medium", "fast", "faster"]),  # Variable encoding
+        audio_volume=rng.uniform(0.93, 1.08),  # More audio variation
     )
 
 

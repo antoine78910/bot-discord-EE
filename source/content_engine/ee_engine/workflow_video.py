@@ -443,6 +443,11 @@ def _render(
         next_input += 1
         args += ["-i", str(pick.text_hook)]
         ox, oy = _youry()._overlay_xy("mid")
+        # Add random offset to text position for uniqueness (±5% of screen)
+        ox_offset = rng.randint(-int(WIDTH * 0.05), int(WIDTH * 0.05))
+        oy_offset = rng.randint(-int(HEIGHT * 0.03), int(HEIGHT * 0.03))
+        ox = f"({ox})+{ox_offset}" if ox_offset != 0 else str(ox)
+        oy = f"({oy})+{oy_offset}" if oy_offset != 0 else str(oy)
         enable = f"lt(t,{max(0.1, durations[0]):.3f})"
         if pick.text_hook.suffix.lower() == ".png":
             filters.append(f"[vbase][{text_index}:v]overlay=x={ox}:y={oy}:enable='{enable}'[vout]")
