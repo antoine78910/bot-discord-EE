@@ -57,6 +57,7 @@ WORKFLOWS_FILE = ROOT / "workflows.json"
 CAPTIONS_FILE = ROOT / "captions.json"
 HOOKS_TEXT_DIR = ROOT / "hooks_text"
 HOOK_VIDEOS_DIR = ROOT / "hook videos"
+HOOK_VIDEOS_DIR2 = ROOT / "hook videos2"  # Additional hook videos folder
 MUSIC_DIR = ROOT / "music"
 CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-Bold.ttf"
 CAPTION_SIZE = 74
@@ -347,9 +348,15 @@ def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPic
     `exclude` keeps the clip already used as the ending out of the hook slot."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
+    
+    # Combine hook videos from both "hook videos" and "hook videos2" folders
+    workflow_hooks = ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT)
+    if HOOK_VIDEOS_DIR2.is_dir():
+        workflow_hooks.extend(ca._list_usable_files(HOOK_VIDEOS_DIR2, ca.VIDEO_EXT))
+    
     hook_pools = {
         "youry": ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT),
-        "workflow": ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT),
+        "workflow": workflow_hooks,
         "katching": _clips(BROAD_DIR).get("katching", []),
     }
     blocked = set(exclude or [])
@@ -365,7 +372,7 @@ def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPic
     if not tracks:
         tracks, music_key = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT), "music"
     if not hook_pools:
-        raise EngineError(f"No hook videos in {ca.hooks_dir()}, {HOOK_VIDEOS_DIR} or katching clips.")
+        raise EngineError(f"No hook videos in {ca.hooks_dir()}, {HOOK_VIDEOS_DIR}, {HOOK_VIDEOS_DIR2} or katching clips.")
     if not tracks:
         raise EngineError(f"No music in {MUSIC_DIR} or {ca.music_dir()}.")
     recent = ca._load_recent()
