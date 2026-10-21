@@ -1,3 +1,13 @@
-# Hook Videos 2 Folder
-# Add your additional hook videos (.mp4, .mov, .m4v) here
-# The system will automatically pick from both "hook videos" and "hook videos2" folders
+# Hook Videos 2 — REQUIRED for the 4th hook pool
+#
+# This folder is currently EMPTY on the server (no .mp4/.mov here).
+# Until you push real video files into this folder, the bot can NEVER
+# pick a hook from "hook videos2" (the pool is skipped when empty).
+#
+# Locally:
+#   1. Drop your .mp4 / .mov files in this folder
+#   2. git add "source/content_engine/workflow/hook videos2"/*.mp4
+#   3. git commit -m "Add hook videos2 clips" && git push
+#
+# Or on Railway volume (no git):
+#   put files in /data/hook videos2  (or set HOOK_VIDEOS2_DIR)
