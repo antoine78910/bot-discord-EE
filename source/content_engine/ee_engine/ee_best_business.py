@@ -57,12 +57,6 @@ CTAS = (
     "Check captions",
     "Check captions to get started",
     "ecomefficiency.com to get started",
-    "Comment \u2018AI\u2019",
-    "Comment \u2018Ecom\u2019",
-    "Comment \u2018AI\u2019 for the full guide",
-    "Comment \u2018Ecom\u2019 for the full guide",
-    "Comment \u2018AI\u2019 to get the full guide",
-    "Comment \u2018Ecom\u2019 to get the full guide",
 )
 
 WHITE = (255, 255, 255, 255)

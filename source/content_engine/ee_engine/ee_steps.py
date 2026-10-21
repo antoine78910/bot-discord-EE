@@ -53,10 +53,6 @@ OUTROS = (
     "Check captions",
     "Check captions to get started",
     "ecomefficiency.com to get started",
-    "Follow and comment \u2018{keyword}\u2019",
-    "Comment \u2018{keyword}\u2019 for the full guide",
-    "Comment \u2018{keyword}\u2019 to get the full guide",
-    "Follow + comment \u2018{keyword}\u2019 for the full guide",
 )
 HOOK_TINT = (34, 38, 46)
 OUTRO_TINT = (12, 14, 20)
@@ -252,7 +248,7 @@ def _pick_slides(rng: random.Random) -> list[dict]:
         used.add(choices[index]["logo"])
     for index, step in enumerate(STEPS):
         slides.append({"kind": "step", "title": step["title"], "tint": step["tint"], "bg": step["bg"], **choices[index]})
-    outro = rng.choice(OUTROS).format(keyword=rng.choice(OUTRO_KEYWORDS))
+    outro = rng.choice(OUTROS)
     slides.append({"kind": "pill", "text": outro, "tint": OUTRO_TINT, "bg": COMMENT_BG})
     return slides
 

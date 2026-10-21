@@ -37,6 +37,7 @@ Each body clip gets an on-screen caption drawn from workflow/captions.json
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import shutil
@@ -58,6 +59,12 @@ CAPTIONS_FILE = ROOT / "captions.json"
 HOOKS_TEXT_DIR = ROOT / "hooks_text"
 HOOK_VIDEOS_DIR = ROOT / "hook videos"
 HOOK_VIDEOS_DIR2 = ROOT / "hook videos2"  # Additional hook videos folder
+# Also scan volume mounts — videos added on Railway without a git push.
+HOOK_VIDEOS2_EXTRA = (
+    Path("/data/hook videos2"),
+    Path("/data/workflow/hook videos2"),
+    Path("/data/content_engine/workflow/hook videos2"),
+)
 MUSIC_DIR = ROOT / "music"
 CAPTION_FONT = ROOT.parent / "carousel" / "fonts" / "TikTokSans-Bold.ttf"
 CAPTION_SIZE = 74
@@ -334,6 +341,7 @@ class HookPick:
     text_hook: Path | None
     music: Path
     keep_audio: bool = False
+    pool: str = ""
 
 
 def _youry():
@@ -342,22 +350,56 @@ def _youry():
     return ca
 
 
+def _list_hook_videos2(ca) -> list[Path]:
+    """Collect hook videos2 from the repo folder and optional /data mounts."""
+    seen: set[str] = set()
+    out: list[Path] = []
+    dirs = [HOOK_VIDEOS_DIR2, *HOOK_VIDEOS2_EXTRA]
+    env_dir = (os.getenv("HOOK_VIDEOS2_DIR") or "").strip()
+    if env_dir:
+        dirs.insert(0, Path(env_dir))
+    for folder in dirs:
+        if not folder.is_dir():
+            continue
+        for path in ca._list_usable_files(folder, ca.VIDEO_EXT):
+            key = path.name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(path)
+    return out
+
+
 def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPick:
     """Hook video from one of FOUR equally likely pools (YouRy hooks, hook videos, hook videos2,
     katching clips), workflow music (else YouRy's), workflow text hooks.
     `exclude` keeps the clip already used as the ending out of the hook slot."""
     ca = _youry()
     text_hooks = [(path, "workflow") for path in sorted(HOOKS_TEXT_DIR.glob("*.png"))]
-    
-    # Keep hook videos folders SEPARATE for equal probability selection
+
+    # Four SEPARATE pools — pick a pool first (equal odds), then a clip inside it.
     hook_pools = {
         "youry": ca._list_usable_files(ca.hooks_dir(), ca.VIDEO_EXT),
         "hook_videos": ca._list_usable_files(HOOK_VIDEOS_DIR, ca.VIDEO_EXT),
-        "hook_videos2": ca._list_usable_files(HOOK_VIDEOS_DIR2, ca.VIDEO_EXT) if HOOK_VIDEOS_DIR2.is_dir() else [],
+        "hook_videos2": _list_hook_videos2(ca),
         "katching": _clips(BROAD_DIR).get("katching", []),
     }
+    print(
+        "[WORKFLOW-HOOK] pools: "
+        + ", ".join(f"{name}={len(pool)}" for name, pool in hook_pools.items())
+    )
+    if not hook_pools["hook_videos2"]:
+        print(
+            f"[WORKFLOW-HOOK] WARNING: hook videos2 is EMPTY "
+            f"(checked {HOOK_VIDEOS_DIR2} + /data mounts). Add .mp4/.mov files there."
+        )
+
     blocked = set(exclude or [])
-    hook_pools = {name: pool for name, pool in hook_pools.items() if any(p not in blocked for p in pool)}
+    available = {
+        name: [p for p in pool if p not in blocked]
+        for name, pool in hook_pools.items()
+        if any(p not in blocked for p in pool)
+    }
     tracks: list[Path] = []
     if MUSIC_DIR.is_dir():
         tracks = [
@@ -368,25 +410,31 @@ def _pick_hook(rng: random.Random, exclude: list[Path] | None = None) -> HookPic
     music_key = "workflow_music"
     if not tracks:
         tracks, music_key = ca._list_usable_files(ca.music_dir(), ca.AUDIO_EXT), "music"
-    if not hook_pools:
-        raise EngineError(f"No hook videos in {ca.hooks_dir()}, {HOOK_VIDEOS_DIR}, {HOOK_VIDEOS_DIR2} or katching clips.")
+    if not available:
+        raise EngineError(
+            f"No hook videos in {ca.hooks_dir()}, {HOOK_VIDEOS_DIR}, {HOOK_VIDEOS_DIR2} or katching clips."
+        )
     if not tracks:
         raise EngineError(f"No music in {MUSIC_DIR} or {ca.music_dir()}.")
     recent = ca._load_recent()
     picked_text = ca._pick_fresh(rng, text_hooks, "workflow_text_hooks", recent)
-    groups = [Path("hook_pools") / name for name in hook_pools]
-    group = ca.draw_from_deck(rng, groups, "workflow_hook_pool", 1, recent)[0].name
-    hook = ca.draw_from_deck(rng, hook_pools[group], f"workflow_hooks:{group}", 1, recent, exclude=list(blocked))[0]
+    # True equal odds every generation (not a sticky deck that can starve a new pool).
+    group = rng.choice(sorted(available))
+    hook = ca.draw_from_deck(
+        rng, available[group], f"workflow_hooks:{group}", 1, recent, exclude=list(blocked)
+    )[0]
     music = ca._pick_fresh(rng, tracks, music_key, recent)
     try:
         ca.RECENT_PICKS_PATH.write_text(json.dumps(recent), encoding="utf-8")
     except OSError:
         pass
+    print(f"[WORKFLOW-HOOK] picked pool={group} file={hook.name}")
     return HookPick(
         hook=hook,
         text_hook=picked_text[0] if picked_text else None,
         music=music,
         keep_audio=group == "katching",
+        pool=group,
     )
 
 
@@ -561,7 +609,10 @@ def render_workflow_video(
         music = "none" if silent else pick.music.stem
         text = pick.text_hook.stem if pick.text_hook else "none"
         hook_sound = " 🔊" if pick.keep_audio else ""
-        scenes = [f"`0` hook · {pick.hook.stem}{hook_sound} · {probe_duration(pick.hook):.1f}s · text `{text}`"]
+        pool_tag = f" · pool `{pick.pool}`" if pick.pool else ""
+        scenes = [
+            f"`0` hook{pool_tag} · {pick.hook.stem}{hook_sound} · {probe_duration(pick.hook):.1f}s · text `{text}`"
+        ]
         for i, ((clip, keep, key), caption) in enumerate(zip(clips, texts), start=1):
             sound = " 🔊" if keep else ""
             scenes.append(
