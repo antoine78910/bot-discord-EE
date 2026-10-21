@@ -123,10 +123,13 @@ SLIDE_LINES: tuple[tuple[tuple[str, ...] | list[tuple[str, ...]], str], ...] = (
 # Optional CTA box under the last line (None = no CTA), same box as the steps outro.
 END_CTAS = (
     None,
+    "Check captions",
+    "Check captions to get started",
+    "ecomefficiency.com to get started",
     "Comment \u2018AI\u2019 for the full guide",
-    "Comment \u2018Ecom\u2019 for the full workflow",
-    "Comment \u2018AI\u2019 to get the full workflow",
     "Comment \u2018Ecom\u2019 for the full guide",
+    "Comment \u2018AI\u2019 to get the full guide",
+    "Comment \u2018Ecom\u2019 to get the full guide",
 )
 assert len(SLIDE_LINES) == len(SLIDE_ORDER)
 
