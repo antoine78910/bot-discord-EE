@@ -13,17 +13,25 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 
-const FILES_DIR = process.env.CONTENT_FILES_DIR || path.join(os.tmpdir(), 'ee-content-files');
+const execFileAsync = promisify(execFile);
+
+const FILES_DIR =
+    process.env.CONTENT_FILES_DIR ||
+    (fs.existsSync('/data') ? '/data/content-files' : path.join(os.tmpdir(), 'ee-content-files'));
 const PUBLIC_URL = String(
     process.env.CONTENT_PUBLIC_URL ||
         (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
 ).replace(/\/+$/, '');
-const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 3) * 24 * 60 * 60 * 1000; // Default 3 days - aggressive cleanup
-const MAX_FOLDERS = Number(process.env.CONTENT_FILES_MAX_FOLDERS || 100); // Max number of content folders to keep
-const DISK_WARNING_THRESHOLD = 0.75; // Warn at 75% capacity
-const DISK_CLEANUP_THRESHOLD = 0.80; // Auto-cleanup at 80% capacity
+const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 2) * 24 * 60 * 60 * 1000; // Default 2 days
+const MAX_FOLDERS = Number(process.env.CONTENT_FILES_MAX_FOLDERS || 40);
+const DISK_WARNING_THRESHOLD = 0.65;
+const DISK_CLEANUP_THRESHOLD = 0.75;
+const VOLUME_BYTES = Number(process.env.CONTENT_VOLUME_BYTES || 5 * 1024 * 1024 * 1024);
 const TOKEN_RE = /^[a-f0-9]{32}$/;
+const TMP_CONTENT_DIR = path.join(os.tmpdir(), 'ee-content');
 
 const MIME = {
     '.jpg': 'image/jpeg',
@@ -42,47 +50,48 @@ function fileUrl(token, name, download = false) {
     return `${PUBLIC_URL}/f/${token}/${encodeURIComponent(name)}${download ? '?dl=1' : ''}`;
 }
 
+async function neededBytes(paths) {
+    let total = 0;
+    for (const source of paths) {
+        const stat = await fs.promises.stat(source).catch(() => null);
+        if (stat) total += stat.size;
+    }
+    return total + 8 * 1024 * 1024;
+}
+
 /** Copies the files into a fresh private folder. Returns { page, files: [{ name, url, download }] }. */
 async function publishFiles(paths, title) {
-    // Check disk usage and cleanup if needed BEFORE starting
-    const usage = await checkDiskUsage();
-    if (usage && usage.usagePercent >= DISK_WARNING_THRESHOLD) {
-        console.log(`[CONTENT-FILES] Disk at ${Math.round(usage.usagePercent * 100)}% - running preventive cleanup...`);
-        await cleanupExpired();
-        await enforceMaxFolders();
-    }
-    
+    await fs.promises.mkdir(FILES_DIR, { recursive: true }).catch(() => {});
+    const need = await neededBytes(paths);
+    await ensureFreeSpace(need);
+
     const token = crypto.randomBytes(16).toString('hex');
     const dir = path.join(FILES_DIR, token);
-    
+
     try {
         await fs.promises.mkdir(dir, { recursive: true });
     } catch (error) {
-        // If mkdir fails due to space, try aggressive cleanup
         if (error?.code === 'ENOSPC') {
-            console.error('[CONTENT-FILES] 🚨 DISK FULL - Running emergency cleanup...');
-            await emergencyCleanup();
-            await enforceMaxFolders();
-            // Retry mkdir
+            console.error('[CONTENT-FILES] 🚨 DISK FULL on mkdir — nuclear cleanup...');
+            await freeSpaceUntil(need, { nuclear: true });
             await fs.promises.mkdir(dir, { recursive: true });
         } else {
             throw error;
         }
     }
-    
+
     const names = [];
     for (const source of paths) {
         const name = path.basename(source);
+        const dest = path.join(dir, name);
         try {
-            await fs.promises.copyFile(source, path.join(dir, name));
+            await fs.promises.copyFile(source, dest);
             names.push(name);
         } catch (error) {
-            // If copy fails due to space, emergency cleanup and retry
             if (error?.code === 'ENOSPC') {
-                console.error('[CONTENT-FILES] 🚨 DISK FULL during copy - Emergency cleanup...');
-                await emergencyCleanup();
-                await enforceMaxFolders();
-                await fs.promises.copyFile(source, path.join(dir, name));
+                console.error('[CONTENT-FILES] 🚨 DISK FULL during copy — nuclear cleanup...');
+                await freeSpaceUntil(need, { nuclear: true });
+                await fs.promises.copyFile(source, dest);
                 names.push(name);
             } else {
                 throw error;
@@ -208,122 +217,166 @@ function handleRequest(req, res) {
     sendFile(req, res, path.join(dir, name), name, url.searchParams.has('dl'));
 }
 
-async function cleanupExpired() {
+async function listContentFolders() {
     const entries = await fs.promises.readdir(FILES_DIR, { withFileTypes: true }).catch(() => []);
-    const now = Date.now();
-    let cleaned = 0;
-    let freedSpace = 0;
-    
+    const folders = [];
     for (const entry of entries) {
         if (!entry.isDirectory() || !TOKEN_RE.test(entry.name)) continue;
         const dir = path.join(FILES_DIR, entry.name);
         const stat = await fs.promises.stat(dir).catch(() => null);
-        if (stat && now - stat.mtimeMs > TTL_MS) {
-            try {
-                const size = await getDirectorySize(dir);
-                await fs.promises.rm(dir, { recursive: true, force: true });
-                cleaned++;
-                freedSpace += size;
-            } catch (error) {
-                console.warn('[CONTENT-FILES] Could not cleanup', entry.name, ':', error?.message);
-            }
+        if (stat) folders.push({ name: entry.name, dir, mtime: stat.mtimeMs });
+    }
+    folders.sort((a, b) => a.mtime - b.mtime);
+    return folders;
+}
+
+async function removeFolder(folder) {
+    const size = await getDirectorySize(folder.dir);
+    await fs.promises.rm(folder.dir, { recursive: true, force: true });
+    return size;
+}
+
+async function cleanupExpired() {
+    const folders = await listContentFolders();
+    const now = Date.now();
+    let cleaned = 0;
+    let freedSpace = 0;
+    for (const folder of folders) {
+        if (now - folder.mtime <= TTL_MS) continue;
+        try {
+            freedSpace += await removeFolder(folder);
+            cleaned++;
+        } catch (error) {
+            console.warn('[CONTENT-FILES] Could not cleanup', folder.name, ':', error?.message);
         }
     }
-    
     if (cleaned > 0) {
         console.log(`[CONTENT-FILES] Cleaned ${cleaned} expired folders (freed ${formatSize(freedSpace)})`);
+    }
+    return freedSpace;
+}
+
+async function cleanupTempJobs() {
+    let freed = 0;
+    const roots = [TMP_CONTENT_DIR, path.join(os.tmpdir(), 'ee-content-files')];
+    for (const root of roots) {
+        if (!fs.existsSync(root)) continue;
+        if (path.resolve(root) === path.resolve(FILES_DIR)) continue;
+        const entries = await fs.promises.readdir(root, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+            const full = path.join(root, entry.name);
+            try {
+                const size = entry.isDirectory()
+                    ? await getDirectorySize(full)
+                    : (await fs.promises.stat(full)).size;
+                await fs.promises.rm(full, { recursive: true, force: true });
+                freed += size;
+            } catch {}
+        }
+    }
+    if (freed > 0) {
+        console.log(`[CONTENT-FILES] Cleared temp generation folders (freed ${formatSize(freed)})`);
+    }
+    return freed;
+}
+
+/** Delete oldest published folders until enough free space (ignores age when nuclear). */
+async function freeSpaceUntil(bytesNeeded, { nuclear = false, keep = 5 } = {}) {
+    let freed = await cleanupExpired();
+    freed += await cleanupTempJobs();
+    freed += await enforceMaxFolders(nuclear ? keep : MAX_FOLDERS);
+
+    const usage = await checkDiskUsage({ cleanup: false });
+    if (usage && usage.freeBytes >= bytesNeeded && !nuclear) return freed;
+
+    const folders = await listContentFolders();
+    const removable = nuclear ? folders.slice(0, Math.max(0, folders.length - keep)) : folders;
+    console.log(
+        `[CONTENT-FILES] 🚨 Freeing space (need ${formatSize(bytesNeeded)}, nuclear=${nuclear}) — ${removable.length} candidate(s)`
+    );
+
+    for (const folder of removable) {
+        try {
+            freed += await removeFolder(folder);
+        } catch (error) {
+            console.warn('[CONTENT-FILES] Remove failed', folder.name, ':', error?.message);
+        }
+        const now = await checkDiskUsage({ cleanup: false });
+        if (now && now.freeBytes >= bytesNeeded) break;
+    }
+    console.log(`[CONTENT-FILES] 🚨 Freed ${formatSize(freed)} total`);
+    return freed;
+}
+
+async function ensureFreeSpace(bytesNeeded) {
+    const usage = await checkDiskUsage({ cleanup: false });
+    if (!usage || usage.freeBytes < bytesNeeded || usage.usagePercent >= DISK_WARNING_THRESHOLD) {
+        console.log(
+            `[CONTENT-FILES] Cleaning before publish (need ${formatSize(bytesNeeded)}, free ${formatSize(usage?.freeBytes || 0)})...`
+        );
+        await freeSpaceUntil(bytesNeeded, { nuclear: !usage || usage.freeBytes < bytesNeeded });
     }
 }
 
 async function emergencyCleanup() {
-    console.log('[CONTENT-FILES] 🚨 EMERGENCY CLEANUP - Removing ALL files older than 3 days...');
-    const entries = await fs.promises.readdir(FILES_DIR, { withFileTypes: true }).catch(() => []);
-    const now = Date.now();
-    const emergencyTTL = 3 * 24 * 60 * 60 * 1000; // 3 days
-    let cleaned = 0;
+    return freeSpaceUntil(500 * 1024 * 1024, { nuclear: true, keep: 3 });
+}
+
+async function enforceMaxFolders(max = MAX_FOLDERS) {
+    const folders = await listContentFolders();
+    const toRemove = folders.length - max;
+    if (toRemove <= 0) return 0;
+
+    console.log(`[CONTENT-FILES] 📊 Folder limit (${folders.length}/${max}) — removing ${toRemove} oldest...`);
+    let removed = 0;
     let freedSpace = 0;
-    
-    for (const entry of entries) {
-        if (!entry.isDirectory() || !TOKEN_RE.test(entry.name)) continue;
-        const dir = path.join(FILES_DIR, entry.name);
-        const stat = await fs.promises.stat(dir).catch(() => null);
-        if (stat && now - stat.mtimeMs > emergencyTTL) {
-            try {
-                const size = await getDirectorySize(dir);
-                await fs.promises.rm(dir, { recursive: true, force: true });
-                cleaned++;
-                freedSpace += size;
-            } catch (error) {
-                console.warn('[CONTENT-FILES] Emergency cleanup failed for', entry.name, ':', error?.message);
-            }
+    for (const folder of folders.slice(0, toRemove)) {
+        try {
+            freedSpace += await removeFolder(folder);
+            removed++;
+        } catch (error) {
+            console.warn('[CONTENT-FILES] Could not remove old folder', folder.name, ':', error?.message);
         }
     }
-    
-    console.log(`[CONTENT-FILES] 🚨 Emergency cleanup: removed ${cleaned} folders (freed ${formatSize(freedSpace)})`);
-    
-    if (cleaned === 0) {
-        console.error('[CONTENT-FILES] ⚠️  Emergency cleanup found nothing to remove. Volume may need manual intervention.');
-    }
-    
+    console.log(`[CONTENT-FILES] 📊 Removed ${removed} oldest folders (freed ${formatSize(freedSpace)})`);
     return freedSpace;
 }
 
-async function enforceMaxFolders() {
-    const entries = await fs.promises.readdir(FILES_DIR, { withFileTypes: true }).catch(() => []);
-    const folders = [];
-    
-    for (const entry of entries) {
-        if (!entry.isDirectory() || !TOKEN_RE.test(entry.name)) continue;
-        const dir = path.join(FILES_DIR, entry.name);
-        const stat = await fs.promises.stat(dir).catch(() => null);
-        if (stat) {
-            folders.push({ name: entry.name, dir, mtime: stat.mtimeMs });
-        }
+async function dfFreeBytes(targetPath) {
+    try {
+        const { stdout } = await execFileAsync('df', ['-k', targetPath], { timeout: 5000 });
+        const lines = stdout.trim().split('\n');
+        if (lines.length < 2) return null;
+        const parts = lines[lines.length - 1].trim().split(/\s+/);
+        const availableKb = Number(parts[3]);
+        return Number.isFinite(availableKb) ? availableKb * 1024 : null;
+    } catch {
+        return null;
     }
-    
-    // Sort by modification time (oldest first)
-    folders.sort((a, b) => a.mtime - b.mtime);
-    
-    // If we exceed max folders, remove oldest ones
-    const toRemove = folders.length - MAX_FOLDERS;
-    if (toRemove > 0) {
-        console.log(`[CONTENT-FILES] 📊 Folder limit exceeded (${folders.length}/${MAX_FOLDERS}) - removing ${toRemove} oldest...`);
-        let removed = 0;
-        let freedSpace = 0;
-        
-        for (const folder of folders.slice(0, toRemove)) {
-            try {
-                const size = await getDirectorySize(folder.dir);
-                await fs.promises.rm(folder.dir, { recursive: true, force: true });
-                removed++;
-                freedSpace += size;
-            } catch (error) {
-                console.warn('[CONTENT-FILES] Could not remove old folder', folder.name, ':', error?.message);
-            }
-        }
-        
-        console.log(`[CONTENT-FILES] 📊 Removed ${removed} oldest folders (freed ${formatSize(freedSpace)})`);
-        return freedSpace;
-    }
-    
-    return 0;
 }
 
-async function checkDiskUsage() {
+async function checkDiskUsage({ cleanup = true } = {}) {
     try {
+        await fs.promises.mkdir(FILES_DIR, { recursive: true });
         const totalSize = await getDirectorySize(FILES_DIR);
-        const maxSize = 5 * 1024 * 1024 * 1024; // 5GB Railway volume
-        const usagePercent = totalSize / maxSize;
-        
-        if (usagePercent >= DISK_CLEANUP_THRESHOLD) {
-            console.warn(`[CONTENT-FILES] ⚠️  Disk usage at ${Math.round(usagePercent * 100)}% - triggering cleanup...`);
-            await emergencyCleanup();
-            await enforceMaxFolders();
-        } else if (usagePercent >= DISK_WARNING_THRESHOLD) {
-            console.warn(`[CONTENT-FILES] ⚠️  Disk usage at ${Math.round(usagePercent * 100)}% - approaching limit`);
+        const freeFromDf = await dfFreeBytes(FILES_DIR);
+        const maxSize = VOLUME_BYTES;
+        const freeBytes = freeFromDf != null ? freeFromDf : Math.max(0, maxSize - totalSize);
+        const usagePercent =
+            freeFromDf != null
+                ? Math.max(0, Math.min(1, 1 - freeFromDf / Math.max(freeFromDf + totalSize, 1)))
+                : totalSize / maxSize;
+
+        if (cleanup && (usagePercent >= DISK_CLEANUP_THRESHOLD || freeBytes < 300 * 1024 * 1024)) {
+            console.warn(
+                `[CONTENT-FILES] ⚠️  Disk high (${Math.round(usagePercent * 100)}%, free ${formatSize(freeBytes)}) — cleanup`
+            );
+            await freeSpaceUntil(400 * 1024 * 1024, { nuclear: false });
+        } else if (cleanup && usagePercent >= DISK_WARNING_THRESHOLD) {
+            console.warn(`[CONTENT-FILES] ⚠️  Disk usage at ${Math.round(usagePercent * 100)}%`);
         }
-        
-        return { totalSize, maxSize, usagePercent };
+
+        return { totalSize, maxSize, usagePercent, freeBytes };
     } catch (error) {
         console.warn('[CONTENT-FILES] Could not check disk usage:', error?.message);
         return null;
@@ -373,28 +426,33 @@ function startFileServer() {
         console.log(`[CONTENT-FILES] TTL: ${Math.round(TTL_MS / 86400000)} days | Max folders: ${MAX_FOLDERS}`);
     });
     
-    // Aggressive startup routine
     console.log('[CONTENT-FILES] 🔧 Running startup maintenance...');
     (async () => {
-        await cleanupExpired().catch(err => console.warn('[CONTENT-FILES] Startup cleanup failed:', err?.message));
-        await enforceMaxFolders().catch(err => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
-        const usage = await checkDiskUsage();
-        if (usage) {
-            console.log(`[CONTENT-FILES] 📊 Disk usage: ${formatSize(usage.totalSize)} / ${formatSize(usage.maxSize)} (${Math.round(usage.usagePercent * 100)}%)`);
+        await cleanupTempJobs().catch(() => {});
+        await cleanupExpired().catch((err) => console.warn('[CONTENT-FILES] Startup cleanup failed:', err?.message));
+        await enforceMaxFolders().catch((err) => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
+        // Nuclear purge if still nearly full (old emergency cleanup only removed >3d files and could free 0).
+        const usage = await checkDiskUsage({ cleanup: false });
+        if (usage && (usage.freeBytes < 400 * 1024 * 1024 || usage.usagePercent >= 0.85)) {
+            console.warn('[CONTENT-FILES] 🚨 Startup disk still tight — nuclear free...');
+            await freeSpaceUntil(800 * 1024 * 1024, { nuclear: true, keep: 5 });
+        }
+        const after = await checkDiskUsage({ cleanup: false });
+        if (after) {
+            console.log(
+                `[CONTENT-FILES] 📊 Disk: used ${formatSize(after.totalSize)} · free ${formatSize(after.freeBytes)} · ~${Math.round(after.usagePercent * 100)}% · dir=${FILES_DIR}`
+            );
         }
     })();
-    
-    // Periodic maintenance every hour (was 2 hours)
+
     setInterval(() => {
         (async () => {
-            await cleanupExpired().catch(err => console.warn('[CONTENT-FILES] Periodic cleanup failed:', err?.message));
-            await enforceMaxFolders().catch(err => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
-            const usage = await checkDiskUsage();
-            if (usage && usage.usagePercent >= DISK_WARNING_THRESHOLD) {
-                console.warn(`[CONTENT-FILES] ⚠️  Disk at ${Math.round(usage.usagePercent * 100)}%`);
-            }
+            await cleanupTempJobs().catch(() => {});
+            await cleanupExpired().catch((err) => console.warn('[CONTENT-FILES] Periodic cleanup failed:', err?.message));
+            await enforceMaxFolders().catch((err) => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
+            await checkDiskUsage();
         })();
-    }, 60 * 60 * 1000).unref();
+    }, 30 * 60 * 1000).unref();
 }
 
 module.exports = { addRoute, isHostingEnabled, publishFiles, startFileServer };
