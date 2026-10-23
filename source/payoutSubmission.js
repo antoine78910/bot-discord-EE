@@ -12,6 +12,7 @@
  *   PAYOUT_TICKET_CATEGORY_ID      category for tickets (default: the panel channel's category)
  *   STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS   roles allowed to click Submit Payout without the creator role
  *   CONTENT_REVIEWER_ID / OWNER_USER_ID      user pinged and given access in tickets
+ *   PAYOUT_TICKET_IDLE_HOURS       delete empty tickets (no human message) after this many hours (default 24)
  */
 const crypto = require('crypto');
 const {
@@ -50,6 +51,10 @@ const STAFF_ROLE_IDS = [
     .map((id) => String(id || '').trim())
     .filter(Boolean);
 
+const IDLE_HOURS = Math.max(1, Number(process.env.PAYOUT_TICKET_IDLE_HOURS || 24) || 24);
+const IDLE_MS = IDLE_HOURS * 60 * 60 * 1000;
+const SWEEP_EVERY_MS = Math.max(15 * 60 * 1000, Number(process.env.PAYOUT_TICKET_SWEEP_MS || 60 * 60 * 1000) || 60 * 60 * 1000);
+
 function submissionEmbed() {
     return new EmbedBuilder()
         .setTitle('💰 Payout Submission')
@@ -76,7 +81,8 @@ function ticketEmbed(user, ticketId) {
                 '4. Screen recording of your account analytics\n\n' +
                 '**Minimum to request a payout:** $10 earned or 10k views.\n\n' +
                 "We'll verify and process within **48 hours**. " +
-                "You'll get a DM the moment your payout is sent."
+                "You'll get a DM the moment your payout is sent.\n\n" +
+                `_This ticket auto-closes after ${IDLE_HOURS}h if you don't send anything._`
         )
         .setFooter({ text: `Ticket ID: ${ticketId}` });
 }
@@ -154,7 +160,55 @@ async function publishPayoutPanel(client) {
             console.warn(`[PAYOUT] Could not publish panel in #${channel.name}:`, error?.message || error);
         }
         await lockOpenTickets(guild).catch((error) => console.warn('[PAYOUT] Ticket lock failed:', error?.message || error));
+        await sweepIdleTickets(guild).catch((error) => console.warn('[PAYOUT] Idle sweep failed:', error?.message || error));
     }
+}
+
+/** True if anyone other than a bot has posted in the ticket. */
+async function ticketHasHumanMessage(channel) {
+    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    if (!messages?.size) return false;
+    return [...messages.values()].some((message) => message.author && !message.author.bot);
+}
+
+/**
+ * Delete payout tickets older than IDLE_HOURS with no human reply.
+ * Keeps tickets where the creator (or anyone) actually posted evidence.
+ */
+async function sweepIdleTickets(guild) {
+    const channels = await guild.channels.fetch().catch(() => guild.channels.cache);
+    const now = Date.now();
+    let deleted = 0;
+    for (const channel of [...channels.values()]) {
+        if (!isTicketChannel(channel)) continue;
+        const ageMs = now - (channel.createdTimestamp || 0);
+        if (ageMs < IDLE_MS) continue;
+        const hasHuman = await ticketHasHumanMessage(channel);
+        if (hasHuman) continue;
+        try {
+            await channel.delete(`Payout ticket idle ${IDLE_HOURS}h with no human message`);
+            deleted += 1;
+            console.log(`[PAYOUT] Deleted idle #${channel.name} (${Math.round(ageMs / 3600000)}h old, no human messages)`);
+        } catch (error) {
+            console.warn(`[PAYOUT] Could not delete idle #${channel.name}:`, error?.message || error);
+        }
+    }
+    if (deleted) console.log(`[PAYOUT] Idle sweep removed ${deleted} empty ticket(s) in ${guild.name}`);
+    return deleted;
+}
+
+/** Periodic cleanup of empty payout tickets (also runs once on panel publish). */
+function startPayoutIdleCleanup(client) {
+    const tick = () => {
+        for (const guild of client.guilds.cache.values()) {
+            sweepIdleTickets(guild).catch((error) =>
+                console.warn(`[PAYOUT] Idle sweep failed in ${guild.name}:`, error?.message || error)
+            );
+        }
+    };
+    setTimeout(tick, 30_000);
+    setInterval(tick, SWEEP_EVERY_MS);
+    console.log(`[PAYOUT] Idle cleanup: delete empty tickets after ${IDLE_HOURS}h (every ${Math.round(SWEEP_EVERY_MS / 60000)}m)`);
 }
 
 /** Only the opener, the bot and the owners: no role gets access, so @everyone/staff/creators can't see it. */
@@ -300,4 +354,4 @@ async function handlePayoutInteraction(interaction) {
     return false;
 }
 
-module.exports = { handlePayoutInteraction, publishPayoutPanel };
+module.exports = { handlePayoutInteraction, publishPayoutPanel, startPayoutIdleCleanup, sweepIdleTickets };

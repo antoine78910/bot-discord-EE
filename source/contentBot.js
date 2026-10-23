@@ -24,7 +24,7 @@ try {
 const { CONTENT_COMMAND, getContentSlashCommand, handleContentCommand } = require('./contentStudio');
 const { handlePanelInteraction, publishContentPanel } = require('./contentPanel');
 const { startFileServer } = require('./contentFiles');
-const { handlePayoutInteraction, publishPayoutPanel } = require('./payoutSubmission');
+const { handlePayoutInteraction, publishPayoutPanel, startPayoutIdleCleanup } = require('./payoutSubmission');
 const { startPaymentProofs } = require('./paymentProofs');
 const { getManualPostCommands, handleManualPostCommand } = require('./manualPost');
 const { handleUgcReviewInteraction, startUgcReview } = require('./ugcReview');
@@ -89,6 +89,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     });
     startCreatorRoleSync(readyClient);
     startPaymentProofs(readyClient);
+    startPayoutIdleCleanup(readyClient);
 });
 
 client.on(Events.GuildCreate, () => {
