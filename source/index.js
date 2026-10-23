@@ -1950,11 +1950,17 @@ client.once(Events.ClientReady, async (readyClient) => {
                     return false;
                 });
                 
-                // If no knowledge base exists, automatically scrape everything
-                if (!loaded) {
-                    await autoScrapeOnStartup(guild, client);
-                } else {
-                    // Otherwise just do incremental update
+                // Never block ready / content renders on a full scrape (was multi-minute CPU+RAM hit).
+                const autoScrape =
+                    String(process.env.AI_AGENT_AUTO_SCRAPE_ON_STARTUP || 'true').toLowerCase() !== 'false';
+                if (!loaded && autoScrape) {
+                    setTimeout(() => {
+                        autoScrapeOnStartup(guild, client).catch((error) => {
+                            console.warn('[AI-AGENT] Auto-scrape failed:', error?.message || error);
+                        });
+                    }, 60_000);
+                    log('AI-AGENT', 'No knowledge base yet — full scrape scheduled in 60s (non-blocking).');
+                } else if (loaded) {
                     aiSupportAgent.buildQAKnowledgeBase(guild, client, OWNER_USER_ID, STAFF_ROLE_ID).catch((error) => {
                         console.warn('[AI-AGENT] Q&A build failed:', error?.message || error);
                     });

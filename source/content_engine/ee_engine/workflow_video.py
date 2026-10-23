@@ -558,13 +558,13 @@ def _render(
         "-filter_complex", ";".join(filters),
         "-map", video_out, "-map", "[aout]",
         "-t", f"{total:.3f}",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-threads", "4",
-        "-c:a", "aac", "-b:a", "192k",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", "0",
+        "-c:a", "aac", "-b:a", "160k",
         "-map_metadata", "-1",
         "-movflags", "+faststart",
         str(output),
     ]
-    run_ffmpeg(args, timeout=1800)
+    run_ffmpeg(args, timeout=900)
 
 
 def render_workflow_video(

@@ -62,7 +62,7 @@ OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 OUTPUT_FPS = 30
 MUSIC_VOLUME = 0.42
-ENCODE_PRESET = "fast"
+ENCODE_PRESET = "veryfast"  # Railway CPU: avoid medium/fast multi-minute encodes
 ENCODE_CRF = "17"
 ENCODE_MAXRATE = "14M"
 @dataclass

@@ -59,10 +59,13 @@ def vary_image(image: Image.Image, rng: random.Random) -> Image.Image:
 
 
 def video_variation_filter(rng: random.Random) -> str:
-    """Extra FFmpeg filters (hue / gamma / static grain) appended after the existing eq/rotate/scale.
-    More aggressive variations for better uniqueness on social platforms."""
+    """Extra FFmpeg filters (hue / gamma) for uniqueness.
+
+    Avoid the libavfilter `noise` filter — it is extremely slow on Railway
+    (multi-minute encodes for short clips). Hue/eq + the caller’s rotate/crop
+    already change the fingerprint enough for social re-uploads.
+    """
     return (
         f"hue=h={rng.uniform(-8.0, 8.0):.2f}:s={rng.uniform(0.94, 1.08):.3f},"
-        f"eq=gamma={rng.uniform(0.94, 1.06):.3f},"
-        f"noise=all_seed={rng.randint(1, 2**30)}:alls={rng.uniform(1.5, 3.0):.2f}:allf=u"
+        f"eq=gamma={rng.uniform(0.94, 1.06):.3f}"
     )

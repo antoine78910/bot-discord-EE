@@ -370,8 +370,9 @@ def _random_variation(rng: random.Random) -> VariationParams:
         speed=rng.uniform(0.975, 1.025),  # More speed variation
         start_trim=rng.uniform(0.08, 0.35),  # More trimming
         end_trim=rng.uniform(0.15, 0.5),  # More trimming
-        crf=rng.choice([15, 16, 17, 18, 19]),  # Variable quality
-        preset=rng.choice(["medium", "fast", "faster"]),  # Variable encoding
+        crf=rng.choice([17, 18, 19, 20]),  # Variable quality (avoid ultra-slow low CRF)
+        # Prefer veryfast on Railway (medium/fast = multi-minute encodes).
+        preset=rng.choice(["veryfast", "veryfast", "faster"]),
         audio_volume=rng.uniform(0.93, 1.08),  # More audio variation
     )
 

@@ -320,6 +320,10 @@ async function freeSpaceUntil(bytesNeeded, { nuclear = false, keep = 5 } = {}) {
 
 async function ensureFreeSpace(bytesNeeded) {
     const usage = await checkDiskUsage({ cleanup: false });
+    // Fast path: plenty of free space — do not walk/delete anything (was slowing every render).
+    if (usage && usage.freeBytes >= Math.max(bytesNeeded * 3, 500 * 1024 * 1024) && usage.usagePercent < DISK_WARNING_THRESHOLD) {
+        return;
+    }
     if (!usage || usage.freeBytes < bytesNeeded || usage.usagePercent >= DISK_WARNING_THRESHOLD) {
         console.log(
             `[CONTENT-FILES] Cleaning before publish (need ${formatSize(bytesNeeded)}, free ${formatSize(usage?.freeBytes || 0)})...`
