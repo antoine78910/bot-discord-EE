@@ -64,6 +64,8 @@ try {
 }
 
 // === Config ===
+// Ticket bot token. When launched via start-both alongside contentBot, CONTENT_BOT_TOKEN
+// is cleared so this process cannot open a second gateway on the content app.
 const TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.CONTENT_BOT_TOKEN;
 const GUILD_ID = process.env.DISCORD_SERVER_ID || process.env.ECOM_EFFICIENCY_SERVER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;

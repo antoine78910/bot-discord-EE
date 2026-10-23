@@ -47,7 +47,10 @@ if (!TOKEN) {
 
 startFileServer();
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// GuildMembers: reliable Creator/Staff role checks on panel clicks (avoids false denials).
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+});
 startUgcReview(client);
 
 async function registerCommands() {
@@ -94,6 +97,8 @@ client.on(Events.GuildCreate, () => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
+        // Panel first — must ACK within 3s; never bury under other handlers.
+        if (await handlePanelInteraction(interaction)) return;
         if (interaction.isChatInputCommand() && interaction.commandName === CONTENT_COMMAND) {
             await handleContentCommand(interaction);
             return;
@@ -106,14 +111,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (await handleUgcReviewInteraction(interaction)) return;
         if (await handlePayoutInteraction(interaction)) return;
         if (await handleCreatorInteraction(interaction)) return;
-        await handlePanelInteraction(interaction);
     } catch (error) {
         console.error('[CONTENT-BOT] interaction error:', error);
         try {
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply('Something went wrong.');
             } else {
-                await interaction.reply({ content: 'Something went wrong.', ephemeral: true });
+                await interaction.reply({ content: 'Something went wrong.', flags: 64 });
             }
         } catch {}
     }

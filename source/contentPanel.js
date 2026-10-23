@@ -304,15 +304,21 @@ async function startJob(interaction, kind, count) {
 /** Returns true when the interaction belonged to the panel. */
 async function handlePanelInteraction(interaction) {
     if (interaction.isButton() && interaction.customId === IDS.open) {
-        if (!canGenerate(interaction)) {
-            await interaction.reply({ content: NOT_ALLOWED, flags: MessageFlags.Ephemeral });
-            return true;
+        try {
+            if (!canGenerate(interaction)) {
+                await interaction.reply({ content: NOT_ALLOWED, flags: MessageFlags.Ephemeral });
+                return true;
+            }
+            await interaction.reply({
+                content: '**What do you want to generate?** Pick a quantity, then a type.',
+                components: pickerComponents(1, isStaff(interaction)),
+                flags: MessageFlags.Ephemeral,
+            });
+            console.log(`[CONTENT-PANEL] Open picker for ${interaction.user?.tag || interaction.user?.id}`);
+        } catch (error) {
+            console.error('[CONTENT-PANEL] Open failed:', error?.message || error);
+            throw error;
         }
-        await interaction.reply({
-            content: '**What do you want to generate?** Pick a quantity, then a type.',
-            components: pickerComponents(1, isStaff(interaction)),
-            flags: MessageFlags.Ephemeral,
-        });
         return true;
     }
 
