@@ -25,11 +25,16 @@ const PUBLIC_URL = String(
     process.env.CONTENT_PUBLIC_URL ||
         (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
 ).replace(/\/+$/, '');
-const TTL_MS = Number(process.env.CONTENT_FILE_TTL_DAYS || 2) * 24 * 60 * 60 * 1000; // Default 2 days
-const MAX_FOLDERS = Number(process.env.CONTENT_FILES_MAX_FOLDERS || 40);
-const DISK_WARNING_THRESHOLD = 0.65;
-const DISK_CLEANUP_THRESHOLD = 0.75;
+// Prefer hours when set (cheaper: shorter hosted lifetime → less volume + less egress).
+const TTL_MS = process.env.CONTENT_FILE_TTL_HOURS
+    ? Number(process.env.CONTENT_FILE_TTL_HOURS) * 60 * 60 * 1000
+    : Number(process.env.CONTENT_FILE_TTL_DAYS || 1) * 24 * 60 * 60 * 1000;
+const MAX_FOLDERS = Number(process.env.CONTENT_FILES_MAX_FOLDERS || 12);
+const DISK_WARNING_THRESHOLD = 0.55;
+const DISK_CLEANUP_THRESHOLD = 0.70;
 const VOLUME_BYTES = Number(process.env.CONTENT_VOLUME_BYTES || 5 * 1024 * 1024 * 1024);
+const STARTUP_KEEP = Number(process.env.CONTENT_STARTUP_KEEP_FOLDERS || 2);
+const TARGET_FREE_BYTES = Number(process.env.CONTENT_TARGET_FREE_MB || 2000) * 1024 * 1024;
 const TOKEN_RE = /^[a-f0-9]{32}$/;
 const TMP_CONTENT_DIR = path.join(os.tmpdir(), 'ee-content');
 
@@ -133,7 +138,11 @@ h1{font-size:18px;margin:0 0 4px}p{color:#999;font-size:13px;margin:0 0 16px}
 .card{background:#1a1d24;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:8px}
 img,video{width:100%;border-radius:6px;background:#000}.file{font-size:48px;text-align:center;padding:30px 0}
 .btn{display:block;text-align:center;background:#8b5cf6;color:#fff;text-decoration:none;padding:9px;border-radius:7px;font-size:13px;word-break:break-all}
-</style></head><body><h1>${escapeHtml(meta.title)}</h1><p>Original files, full quality. Links expire after ${Math.round(TTL_MS / 86400000)} days.</p>
+</style></head><body><h1>${escapeHtml(meta.title)}</h1><p>Original files, full quality. Links expire after ${
+        TTL_MS < 86400000
+            ? `${Math.max(1, Math.round(TTL_MS / 3600000))} hours`
+            : `${Math.round(TTL_MS / 86400000)} day(s)`
+    }.</p>
 <div class="grid">${cards}</div></body></html>`;
 }
 
@@ -142,7 +151,8 @@ function sendFile(req, res, filePath, name, download) {
     const headers = {
         'Content-Type': MIME[path.extname(name).toLowerCase()] || 'application/octet-stream',
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'private, max-age=86400',
+        // Long cache: Discord/CDN revalidate less → less Railway egress.
+        'Cache-Control': 'public, max-age=604800, immutable',
     };
     if (download) headers['Content-Disposition'] = `attachment; filename="${name.replace(/"/g, '')}"`;
 
@@ -430,12 +440,16 @@ function startFileServer() {
     (async () => {
         await cleanupTempJobs().catch(() => {});
         await cleanupExpired().catch((err) => console.warn('[CONTENT-FILES] Startup cleanup failed:', err?.message));
-        await enforceMaxFolders().catch((err) => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
-        // Nuclear purge if still nearly full (old emergency cleanup only removed >3d files and could free 0).
+        await enforceMaxFolders(MAX_FOLDERS).catch((err) =>
+            console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message)
+        );
+        // Always aim for ~2GB free on boot — volume at 99% is the #1 Railway cost/failure driver.
         const usage = await checkDiskUsage({ cleanup: false });
-        if (usage && (usage.freeBytes < 400 * 1024 * 1024 || usage.usagePercent >= 0.85)) {
-            console.warn('[CONTENT-FILES] 🚨 Startup disk still tight — nuclear free...');
-            await freeSpaceUntil(800 * 1024 * 1024, { nuclear: true, keep: 5 });
+        if (!usage || usage.freeBytes < TARGET_FREE_BYTES || usage.usagePercent >= 0.70) {
+            console.warn(
+                `[CONTENT-FILES] 🚨 Startup reclaim — target free ${formatSize(TARGET_FREE_BYTES)} (keep ${STARTUP_KEEP} newest)`
+            );
+            await freeSpaceUntil(TARGET_FREE_BYTES, { nuclear: true, keep: STARTUP_KEEP });
         }
         const after = await checkDiskUsage({ cleanup: false });
         if (after) {
@@ -445,14 +459,18 @@ function startFileServer() {
         }
     })();
 
+    // Every 15 min — keep volume/egress costs down.
     setInterval(() => {
         (async () => {
             await cleanupTempJobs().catch(() => {});
             await cleanupExpired().catch((err) => console.warn('[CONTENT-FILES] Periodic cleanup failed:', err?.message));
             await enforceMaxFolders().catch((err) => console.warn('[CONTENT-FILES] Folder limit check failed:', err?.message));
-            await checkDiskUsage();
+            const usage = await checkDiskUsage({ cleanup: false });
+            if (usage && usage.freeBytes < TARGET_FREE_BYTES * 0.5) {
+                await freeSpaceUntil(TARGET_FREE_BYTES, { nuclear: true, keep: STARTUP_KEEP });
+            }
         })();
-    }, 30 * 60 * 1000).unref();
+    }, 15 * 60 * 1000).unref();
 }
 
 module.exports = { addRoute, isHostingEnabled, publishFiles, startFileServer };
