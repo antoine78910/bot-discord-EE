@@ -153,7 +153,8 @@ def render_variator_video(
         vg.render_caption_image(caption, caption_font).save(caption_path)
         rendered = work / "caption.mp4"
         if not vg.overlay_caption_on_variation(caption_path, variation_video, rendered):
-            raise EngineError("Variator: caption overlay render failed.")
+            detail = getattr(vg.overlay_caption_on_variation, "last_error", "") or "unknown ffmpeg error"
+            raise EngineError(f"Variator: caption overlay render failed ({detail[:400]}).")
 
         duration = probe_duration(rendered)
         silent = silent_turn("variator")

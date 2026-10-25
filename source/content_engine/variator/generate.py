@@ -935,14 +935,19 @@ def overlay_caption_on_variation(
     """
     Superpose une vidéo variation (avec son fade + audio) sur une caption 9:16 (fond + bandeau + texte, sans fade),
     façon CapCut: la variation est centrée sous le bandeau, l'audio vient de la variation.
+
+    Returns True on success. On failure, sets overlay_caption_on_variation.last_error.
     """
+    overlay_caption_on_variation.last_error = ""
     ffmpeg_exe = get_ffmpeg_exe()
     if not ffmpeg_exe:
-        print("FFmpeg introuvable pour les captions.")
+        overlay_caption_on_variation.last_error = "FFmpeg not found"
+        print("FFmpeg introuvable pour les captions.", file=sys.stderr)
         return False
 
     if not variation_video.exists():
-        print(f"Variation video not found for caption: {variation_video}")
+        overlay_caption_on_variation.last_error = f"Variation video missing: {variation_video}"
+        print(f"Variation video not found for caption: {variation_video}", file=sys.stderr)
         return False
 
     img_abs = str(caption_image.resolve())
@@ -950,65 +955,79 @@ def overlay_caption_on_variation(
     out_abs = str(output_video.resolve())
 
     # Zone sous le bandeau blanc (où l'on veut la variation)
-    y0 = int(CAPTION_HEIGHT * CAPTION_RECT_Y_START)
     y1 = int(CAPTION_HEIGHT * CAPTION_RECT_Y_END)
-    # On laisse un peu plus d'espace noir en bas → on réduit légèrement la hauteur utile
-    zone_h = int((CAPTION_HEIGHT - y1) * 0.85)
+    # Leave a little black at the bottom; keep even dimensions for yuv420p.
+    zone_h = int((CAPTION_HEIGHT - y1) * 0.85) // 2 * 2
+    zone_w = CAPTION_WIDTH // 2 * 2
 
-    # Filter:
-    #  - Entrée 0: image caption (loopée)
-    #  - Entrée 1: vidéo variation
-    # 1) On scale la variation pour rentrer dans la zone sous le bandeau (force_original_aspect_ratio=decrease)
-    # 2) On overlay au centre horizontalement, et aligné dans la zone verticalement
+    # Alpine/Railway ffmpeg is strict: every filter pad must be labeled, and we must
+    # map [vout] (mapping 0:v after filter_complex fails on many builds).
+    # scale+pad keeps the overlay inside the frame (avoids "outside of the frame").
     filter_complex = (
-        f"[1:v]scale={CAPTION_WIDTH}:{zone_h}:force_original_aspect_ratio=decrease[vid];"
-        f"[0:v][vid]overlay=(main_w-overlay_w)/2:{y1}"
+        f"[0:v]format=yuv420p,setsar=1[base];"
+        f"[1:v]format=yuv420p,scale={zone_w}:{zone_h}:force_original_aspect_ratio=decrease,"
+        f"pad={zone_w}:{zone_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[vid];"
+        f"[base][vid]overlay=(main_w-overlay_w)/2:{y1}:format=auto[vout]"
     )
 
     cmd = [
         ffmpeg_exe,
         "-y",
-        "-loop",
-        "1",
-        "-i",
-        img_abs,   # 0:v = caption (image)
-        "-i",
-        var_abs,   # 1:v,1:a = variation (avec fade + audio)
-        "-filter_complex",
-        filter_complex,
-        "-r",
-        str(FPS),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "16",
-        "-pix_fmt",
-        "yuv420p",
-        "-map",
-        "0:v",     # vidéo: résultat overlay
-        "-map",
-        "1:a?",    # audio: piste audio de la variation si présente
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
+        "-loop", "1",
+        "-i", img_abs,   # 0 = caption still
+        "-i", var_abs,   # 1 = variation (+ optional audio)
+        "-filter_complex", filter_complex,
+        "-map", "[vout]",
+        "-map", "1:a?",
+        "-r", str(FPS),
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "160k",
         "-shortest",
+        "-movflags", "+faststart",
         out_abs,
     ]
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=False)
-        if result.returncode == 0:
+        if result.returncode == 0 and output_video.exists() and output_video.stat().st_size > 0:
             return True
         err = (result.stderr or b"").decode(errors="replace").strip()
-        print(f"FFmpeg overlay error for {output_video.name} (code {result.returncode}):")
-        print(err[-2000:] if len(err) > 2000 else err)
+        # Keep the actionable tail for Discord / Railway logs.
+        tail = err[-1200:] if len(err) > 1200 else err
+        overlay_caption_on_variation.last_error = (
+            f"ffmpeg exit {result.returncode}: {tail or 'no stderr'}"
+        )
+        print(f"FFmpeg overlay error for {output_video.name}: {overlay_caption_on_variation.last_error}", file=sys.stderr)
+
+        # Retry without audio if the only failure was audio mapping (some builds dislike 1:a?).
+        if "1:a" in tail or "Stream map '1:a" in tail or "Matching streams" in tail:
+            cmd_no_a = [
+                ffmpeg_exe, "-y",
+                "-loop", "1", "-i", img_abs, "-i", var_abs,
+                "-filter_complex", filter_complex,
+                "-map", "[vout]", "-an",
+                "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast",
+                "-crf", "18", "-pix_fmt", "yuv420p", "-shortest",
+                "-movflags", "+faststart", out_abs,
+            ]
+            retry = subprocess.run(cmd_no_a, capture_output=True, text=False)
+            if retry.returncode == 0 and output_video.exists() and output_video.stat().st_size > 0:
+                print("  -> Caption overlay created without audio.", file=sys.stderr)
+                return True
+            retry_err = (retry.stderr or b"").decode(errors="replace").strip()[-800:]
+            overlay_caption_on_variation.last_error = f"ffmpeg exit {retry.returncode}: {retry_err}"
         return False
     except FileNotFoundError:
-        print("FFmpeg introuvable pour les captions.")
+        overlay_caption_on_variation.last_error = "FFmpeg not found"
+        print("FFmpeg introuvable pour les captions.", file=sys.stderr)
         return False
+
+
+overlay_caption_on_variation.last_error = ""
 
 
 def main(args):
