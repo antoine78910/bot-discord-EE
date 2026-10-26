@@ -165,8 +165,11 @@ const AI_ESCALATION_KEYWORDS = [
 
 // === AI Support Agent (general chat monitoring) ===
 const AI_AGENT_STAFF_ALERT_CHANNEL_ID = process.env.AI_AGENT_STAFF_ALERT_CHANNEL_ID || null;
+// Master switch — set AI_AGENT_ENABLED=false to fully stop auto-replies.
+const AI_AGENT_ENABLED = String(process.env.AI_AGENT_ENABLED || 'true').toLowerCase() !== 'false';
 // Auto-enable on ALL channels by default (Antoine's request)
-const AI_AGENT_AUTO_ENABLE_ALL_CHANNELS = process.env.AI_AGENT_AUTO_ENABLE_ALL_CHANNELS !== 'false';
+const AI_AGENT_AUTO_ENABLE_ALL_CHANNELS =
+    AI_AGENT_ENABLED && process.env.AI_AGENT_AUTO_ENABLE_ALL_CHANNELS !== 'false';
 const AGENT_ENABLE_COMMAND = 'agent-enable';
 const AGENT_DISABLE_COMMAND = 'agent-disable';
 const AGENT_STATUS_COMMAND = 'agent-status';
@@ -1900,7 +1903,10 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
     
     // Initialize AI Support Agent
-    if (AI_AGENT_STAFF_ALERT_CHANNEL_ID) {
+    if (!AI_AGENT_ENABLED) {
+        log('AI-AGENT', 'Disabled (AI_AGENT_ENABLED=false) — no auto-replies.');
+    }
+    if (AI_AGENT_ENABLED && AI_AGENT_STAFF_ALERT_CHANNEL_ID) {
         aiSupportAgent.setStaffAlertChannel(AI_AGENT_STAFF_ALERT_CHANNEL_ID);
         log('AI-AGENT', `Staff alert channel: ${AI_AGENT_STAFF_ALERT_CHANNEL_ID}`);
     }
@@ -2041,7 +2047,7 @@ client.on(Events.MessageCreate, (message) => {
     });
     
     // Handle general chat monitoring (new functionality)
-    if (aiClient) {
+    if (AI_AGENT_ENABLED && aiClient) {
         aiSupportAgent.handleGeneralChatMessage(message, {
             client,
             anthropicClient,
