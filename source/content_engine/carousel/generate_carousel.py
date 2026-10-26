@@ -18,9 +18,10 @@ import random
 import re
 import urllib.request
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps, ImageStat
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -30,6 +31,8 @@ ASSETS_DIR = PROJECT_ROOT / "assets"
 AVATARS_DIR = ASSETS_DIR / "avatars"
 PHOTOS_DIR = ASSETS_DIR / "photos"
 OVERLAYS_DIR = ASSETS_DIR / "overlays"
+LOGOS_DIR = ASSETS_DIR / "logos"
+COMPANY_LOGOS_DIR = LOGOS_DIR / "companies"
 FONTS_DIR = PROJECT_ROOT / "fonts"
 OUTPUT_DIR = PROJECT_ROOT / "output" / "carousel"
 AB_TEST_DIR = OUTPUT_DIR / "ab_test"
@@ -38,6 +41,8 @@ TEMPLATES_DIR = PROJECT_ROOT / "templates"
 TEMPLATE3_FILE = TEMPLATES_DIR / "template3.json"
 TEMPLATE4_FILE = TEMPLATES_DIR / "template4.json"
 DARK_CITIES_PACK = "dark_cities"
+# Chance to show a company logo instead of the name on template3 slides.
+TEMPLATE3_LOGO_CHANCE = 0.55
 # Dedicated backgrounds stay out of the tools-carousel mix:
 # night skylines (template 3), business class + lifestyle (Best business carousel).
 PHOTO_PACKS_EXCLUDED_FROM_MIX = frozenset(
@@ -1421,6 +1426,183 @@ def _draw_pill(
     return y + box_h
 
 
+def _company_slug(company: dict) -> str:
+    raw = str(company.get("slug") or company.get("name") or "").strip().lower()
+    raw = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+    return raw or "company"
+
+
+def _darken_city_bg(img: Image.Image) -> Image.Image:
+    """Push bright night-city photos darker so white stroke text stays readable."""
+    rgb = img.convert("RGB")
+    mean = float(ImageStat.Stat(rgb.convert("L")).mean[0] or 1.0)
+    # Target a dim mid-tone (~28). Bright skylines (windows/spotlights) get crushed harder.
+    target = 28.0
+    factor = min(0.78, max(0.32, target / mean))
+    out = ImageEnhance.Brightness(rgb).enhance(factor)
+    out = ImageEnhance.Contrast(out).enhance(0.90)
+    # Soft black veil — stronger when the frame is still luminous after the multiply.
+    still = float(ImageStat.Stat(out.convert("L")).mean[0] or 0.0)
+    alpha = int(min(170, max(65, (still - 18) * 3.0)))
+    veil = Image.new("RGBA", out.size, (0, 0, 0, alpha))
+    return Image.alpha_composite(out.convert("RGBA"), veil).convert("RGB")
+
+
+def _logo_urls_for_domain(domain: str) -> list[str]:
+    """JobShift-style logo libraries: logo.dev/Brandfetch (if keyed) → Uplead → Google → icon.horse."""
+    d = domain.strip().lower().removeprefix("www.")
+    if not d or "." not in d:
+        return []
+    # Free libraries first. icon.horse often returns flat lettermarks (single glyph on grey).
+    urls = [
+        f"https://logo.uplead.com/{d}",
+        f"https://www.google.com/s2/favicons?domain={d}&sz=256",
+        f"https://www.google.com/s2/favicons?domain={d}&sz=128",
+        f"https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{d}&size=128",
+        f"https://icon.horse/icon/{d}",
+    ]
+    # Optional paid/CDN keys when present in the environment.
+    logo_dev = os.environ.get("LOGO_DEV_TOKEN", "").strip()
+    if logo_dev:
+        urls.insert(0, f"https://img.logo.dev/{d}?token={logo_dev}&format=png&size=256")
+    brandfetch = os.environ.get("BRANDFETCH_CLIENT_ID", "").strip()
+    if brandfetch:
+        urls.insert(0, f"https://cdn.brandfetch.io/{d}/w/400/h/400?c={brandfetch}")
+    return urls
+
+
+def _fetch_logo_image(url: str, *, min_side: int = 64) -> Image.Image | None:
+    """Download a logo; reject tiny favicons (they look awful when upscaled)."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 EEBot/1.0"})
+        data = urllib.request.urlopen(req, timeout=10).read()
+        im = Image.open(BytesIO(data)).convert("RGBA")
+        if min(im.size) < min_side:
+            return None
+        return im
+    except Exception:
+        return None
+
+
+def _normalize_logo(logo: Image.Image, size: int = 256) -> Image.Image:
+    """Square transparent canvas, logo centered."""
+    logo = logo.convert("RGBA")
+    bbox = logo.getbbox()
+    if bbox:
+        logo = logo.crop(bbox)
+    side = max(logo.size)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    canvas.paste(logo, ((side - logo.width) // 2, (side - logo.height) // 2), logo)
+    if side != size:
+        canvas = canvas.resize((size, size), Image.Resampling.LANCZOS)
+    return canvas
+
+
+def _logo_looks_usable(logo: Image.Image) -> bool:
+    """Drop blanks, upscaled favicons, and flat lettermarks (single glyph on grey)."""
+    rgba = logo.convert("RGBA")
+    w, h = rgba.size
+    pixels = w * h
+    if pixels <= 0:
+        return False
+    alpha = rgba.split()[3]
+    opaque = sum(1 for p in alpha.getdata() if p > 20)
+    if opaque < pixels * 0.04:
+        return False
+    gray = rgba.convert("L")
+    std = float(ImageStat.Stat(gray).stddev[0] or 0.0)
+    step = max(1, pixels // 4000)
+    sample = list(rgba.convert("RGB").getdata())[::step]
+    if not sample:
+        return False
+    counts: dict[tuple[int, int, int], int] = {}
+    for px in sample:
+        counts[px] = counts.get(px, 0) + 1
+    top_share = max(counts.values()) / len(sample)
+    uniq = len(counts)
+    # Flat grey lettermarks: one tone dominates, almost no palette.
+    if top_share > 0.90 and uniq < 80:
+        return False
+    # Real marks usually have std ≥ 35. Solid brand blocks (e.g. Orange) sit ~25–32
+    # but keep a rich sampled palette — allow those when uniq is healthy.
+    if std >= 35.0:
+        return True
+    if std >= 24.0 and uniq >= 150 and top_share < 0.85:
+        return True
+    return False
+
+
+def _resolve_company_logo(company: dict) -> Image.Image | None:
+    """
+    Resolve a company logo for template3:
+      1. Local library assets/logos/companies/{slug}.png (must pass usability)
+      2. Remote libraries (logo.dev / Brandfetch if keyed, else Google / icon.horse)
+    Cached into the local library only after a usable remote fetch.
+    """
+    slug = _company_slug(company)
+    COMPANY_LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+    local = COMPANY_LOGOS_DIR / f"{slug}.png"
+    if local.is_file():
+        try:
+            cached = Image.open(local).convert("RGBA")
+            if _logo_looks_usable(cached):
+                return cached
+            # Stale lettermark / blank — drop and re-fetch.
+            local.unlink(missing_ok=True)
+        except Exception:
+            try:
+                local.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    domains: list[str] = []
+    for key in ("domain", "website", "url"):
+        value = str(company.get(key) or "").strip()
+        if value:
+            domains.append(value.replace("https://", "").replace("http://", "").split("/")[0])
+    # Heuristic fallback from the company name.
+    name = str(company.get("name") or "").strip()
+    if name and not domains:
+        guess = re.sub(r"[^a-z0-9]", "", name.lower())
+        if guess:
+            domains.append(f"{guess}.com")
+
+    for domain in domains:
+        for url in _logo_urls_for_domain(domain):
+            logo = _fetch_logo_image(url)
+            if logo is None:
+                continue
+            normalized = _normalize_logo(logo)
+            if not _logo_looks_usable(normalized):
+                continue
+            try:
+                normalized.save(local)
+            except Exception:
+                pass
+            return normalized
+    return None
+
+
+def _draw_company_logo_card(overlay: Image.Image, logo: Image.Image, y: int) -> int:
+    """White rounded card with the company logo centered — same visual weight as the name pill."""
+    card = 220
+    pad = 36
+    box = card + pad * 2
+    x0 = (CANVAS_W - box) // 2
+    draw = ImageDraw.Draw(overlay)
+    draw.rounded_rectangle([x0, y, x0 + box, y + box], radius=28, fill=(255, 255, 255, 255))
+    # Soft inner margin so logos don't kiss the edge.
+    inner = card
+    logo = logo.convert("RGBA")
+    scale = min(inner / max(1, logo.width), inner / max(1, logo.height))
+    lw, lh = max(1, int(logo.width * scale)), max(1, int(logo.height * scale))
+    logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
+    lx = x0 + (box - lw) // 2
+    ly = y + (box - lh) // 2
+    overlay.paste(logo, (lx, ly), logo)
+    return y + box
+
+
 def _render_template3_hook(bg: Image.Image, count: int, spec: dict) -> Image.Image:
     overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))
     title_font, _ = _fit_font(f"{count} entreprises", 900, 86, 64)
@@ -1464,36 +1646,48 @@ def _wrap_benefit(text: str, font, emoji_size: int, max_width: int) -> list[str]
     return [wrapped[0], *cont]
 
 
-def _render_template3_company(bg: Image.Image, company: dict) -> Image.Image:
+def _render_template3_company(
+    bg: Image.Image,
+    company: dict,
+    *,
+    logo_chance: float = TEMPLATE3_LOGO_CHANCE,
+) -> Image.Image:
     name = _vary(company.get("name", ""))
     role = _vary(company.get("role", ""))
     raw_lines = [_vary(line) for line in company.get("lines", []) if str(line).strip()]
     overlay = Image.new("RGBA", bg.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    name_font, name_size = _fit_font(name, 880, 72, 48)
-    name_w, name_h = _line_size(name, name_font, name_size)
-    pad_x, pad_y = 56, 32
-    card_w = max(name_w + pad_x * 2, 620)
-    card_h = name_h + pad_y * 2
-    card_x = (CANVAS_W - card_w) // 2
-    card_y = int(CANVAS_H * 0.16)
-    draw.rounded_rectangle(
-        [card_x, card_y, card_x + card_w, card_y + card_h],
-        radius=16,
-        fill=(255, 255, 255, 255),
-    )
-    _draw_mixed_text(
-        overlay,
-        draw,
-        (card_x + (card_w - name_w) // 2, card_y + pad_y),
-        name,
-        name_font,
-        name_size,
-        (20, 20, 20, 255),
-    )
+    card_y = int(CANVAS_H * 0.14)
+    logo = None
+    if random.random() < float(logo_chance):
+        logo = _resolve_company_logo(company)
 
-    y = card_y + card_h + 36
+    if logo is not None:
+        y = _draw_company_logo_card(overlay, logo, card_y) + 28
+    else:
+        name_font, name_size = _fit_font(name, 880, 72, 48)
+        name_w, name_h = _line_size(name, name_font, name_size)
+        pad_x, pad_y = 56, 32
+        card_w = max(name_w + pad_x * 2, 620)
+        card_h = name_h + pad_y * 2
+        card_x = (CANVAS_W - card_w) // 2
+        draw.rounded_rectangle(
+            [card_x, card_y, card_x + card_w, card_y + card_h],
+            radius=16,
+            fill=(255, 255, 255, 255),
+        )
+        _draw_mixed_text(
+            overlay,
+            draw,
+            (card_x + (card_w - name_w) // 2, card_y + pad_y),
+            name,
+            name_font,
+            name_size,
+            (20, 20, 20, 255),
+        )
+        y = card_y + card_h + 36
+
     max_w = CANVAS_W - 100
     role_font, role_size = _fit_font(role, max_w, 46, 34)
     if role:
@@ -1591,12 +1785,13 @@ def _generate_template3(
             return Image.new("RGB", (CANVAS_W, CANVAS_H), (8, 10, 18))
         path = pool[index % len(pool)]
         img = _load_cover_augmented(path, CANVAS_W, CANVAS_H, aug, seed_base + index)
-        return ImageEnhance.Brightness(img).enhance(0.9)
+        return _darken_city_bg(img)
 
     def _log(message: str) -> None:
         if not quiet:
             print(message)
 
+    logo_chance = float(data.get("logo_chance", TEMPLATE3_LOGO_CHANCE))
     saved: list[Path] = []
     hook = _render_template3_hook(_bg(0), count, data.get("hook") or {})
     path0 = dest / f"{prefix}slide_00.png"
@@ -1606,7 +1801,7 @@ def _generate_template3(
     _log(f"  Slide 1/{slide_total}: {path0.name}  (HOOK alternance, {count} entreprises)")
 
     for i, company in enumerate(companies):
-        img = _render_template3_company(_bg(i + 1), company)
+        img = _render_template3_company(_bg(i + 1), company, logo_chance=logo_chance)
         path = dest / f"{prefix}slide_{i + 1:02d}.png"
         img.save(path, quality=95)
         saved.append(path)
