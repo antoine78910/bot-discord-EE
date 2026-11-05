@@ -3,6 +3,7 @@
  * Runs /ee-content and /username, registered on every server the bot is in.
  * Start with `node contentBot.js` (Railway: own service with BOT_ENTRY=contentBot.js).
  *
+ * Also posts the AdsPower "Get the code" panel (see adspowerOtp.js).
  * Env: CONTENT_BOT_TOKEN (required), STAFF_ROLE_ID / CONTENT_STAFF_ROLE_IDS, PYTHON_BIN, FFMPEG_PATH.
  */
 const fs = require('fs');
@@ -37,6 +38,7 @@ const {
     startCreatorRoleSync,
     USERNAME_COMMAND,
 } = require('./creatorChannels');
+const { ensureAdspowerOtpPanel, handleAdspowerOtpInteraction } = require('./adspowerOtp');
 
 const TOKEN = process.env.CONTENT_BOT_TOKEN;
 
@@ -87,6 +89,9 @@ client.once(Events.ClientReady, async (readyClient) => {
     await syncRegistrationLog(readyClient).catch((error) => {
         console.warn('[CREATOR] registration sync failed:', error?.message || error);
     });
+    await ensureAdspowerOtpPanel(readyClient).catch((error) => {
+        console.warn('[ADSPOWER] panel failed:', error?.message || error);
+    });
     startCreatorRoleSync(readyClient);
     startPaymentProofs(readyClient);
     startPayoutIdleCleanup(readyClient);
@@ -100,6 +105,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         // Panel first — must ACK within 3s; never bury under other handlers.
         if (await handlePanelInteraction(interaction)) return;
+        if (await handleAdspowerOtpInteraction(interaction)) return;
         if (interaction.isChatInputCommand() && interaction.commandName === CONTENT_COMMAND) {
             await handleContentCommand(interaction);
             return;
