@@ -80,11 +80,12 @@ client.once(Events.ClientReady, async (readyClient) => {
     await publishContentPanel(readyClient).catch((error) => {
         console.warn('[CONTENT-PANEL] publish failed:', error?.message || error);
     });
-    await publishPayoutPanel(readyClient).catch((error) => {
-        console.warn('[PAYOUT] publish failed:', error?.message || error);
-    });
+    // Create missing channels (payout-submission, dm-automation, payouts...) before posting panels.
     await publishCreatorChannels(readyClient).catch((error) => {
         console.warn('[CREATOR] publish failed:', error?.message || error);
+    });
+    await publishPayoutPanel(readyClient).catch((error) => {
+        console.warn('[PAYOUT] publish failed:', error?.message || error);
     });
     await syncRegistrationLog(readyClient).catch((error) => {
         console.warn('[CREATOR] registration sync failed:', error?.message || error);

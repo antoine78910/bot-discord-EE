@@ -88,7 +88,7 @@ const CHANNELS = {
 };
 
 /** Channels that are linked or pinned by id, but never created by the bot. */
-const NEVER_CREATE = ['content_bot', 'payout_submission', 'referral', 'support'];
+const NEVER_CREATE = ['content_bot', 'referral', 'support'];
 
 /** Exact names of channels this bot created and no longer uses. */
 const RETIRED_CHANNELS = ['🎬-formats'];

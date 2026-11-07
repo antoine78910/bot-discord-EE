@@ -48,12 +48,9 @@ async function ensureAdspowerOtpPanel(client) {
         const mine = recent
             ? [...recent.values()].filter((m) => m.author?.id === client.user.id && messageHasAdspowerOtpButton(m))
             : [];
-        if (mine.length) {
-            const [latest] = mine;
-            if (latest.content !== PANEL_CONTENT) await latest.edit({ content: PANEL_CONTENT, components: [row] }).catch(() => {});
-            console.log(`[ADSPOWER] OTP panel kept (message ${latest.id})`);
-            return;
-        }
+        // Repost on every startup so the panel is always the newest message in the channel.
+        for (const m of mine) await m.delete().catch(() => {});
+        if (mine.length) console.log(`[ADSPOWER] Removed ${mine.length} old OTP panel(s)`);
         const sent = await ch.send({ content: PANEL_CONTENT, components: [row] });
         console.log(`[ADSPOWER] OTP panel posted in channel ${id} (message ${sent.id})`);
     } catch (e) {
