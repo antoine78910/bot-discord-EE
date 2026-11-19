@@ -18,9 +18,48 @@ function pickDiscordIdFromMetadata(meta) {
 
 function isBadLegacySub(sub) {
   if (!sub) return false;
-  if (sub.status === 'canceled') return true;
-  if (sub.cancel_at_period_end) return true;
-  return false;
+  // cancel_at_period_end alone is NOT bad: the member already paid until period end.
+  return sub.status === 'canceled' || sub.status === 'unpaid' || sub.status === 'incomplete_expired';
+}
+
+function getMainStripeKey() {
+  return String(process.env.STRIPE_SECRET_KEY_MAIN || process.env.STRIPE_SECRET_KEY || '').trim();
+}
+
+/**
+ * Members migrated off Sublaunch are canceled on the legacy account but billed on the
+ * main account (same cus_ IDs after the Stripe copy, or found by email). Returns a
+ * reason string when the member still has paid / scheduled access there, else null.
+ */
+async function lookupMainStripeAccess(stripe, customerId, email) {
+  const ids = new Set();
+  if (customerId) ids.add(String(customerId).trim());
+  if (email) {
+    try {
+      const found = await stripe.customers.search({
+        query: `email:'${escapeEmailForStripeSearch(email)}'`,
+        limit: 10,
+      });
+      for (const c of found.data || []) ids.add(c.id);
+    } catch {}
+  }
+
+  for (const id of ids) {
+    if (!id) continue;
+    try {
+      const subs = await stripe.subscriptions.list({ customer: id, status: 'all', limit: 20 });
+      const live = subs.data.find((s) => ['active', 'trialing', 'past_due'].includes(s.status));
+      if (live) return `main_stripe_subscription_${live.status}`;
+      const schedules = await stripe.subscriptionSchedules.list({ customer: id, limit: 20 });
+      if (schedules.data.some((s) => s.status === 'not_started' || s.status === 'active')) {
+        return 'main_stripe_subscription_scheduled';
+      }
+    } catch (e) {
+      // Customer missing on main account is normal; anything else means we can't be sure.
+      if (e?.code !== 'resource_missing') return 'main_stripe_lookup_failed';
+    }
+  }
+  return null;
 }
 
 function hasActiveLegacySub(sub) {
@@ -481,6 +520,8 @@ async function runCsvCancelledAgentsAudit(guild, csvText) {
   }
 
   const stripe = new Stripe(legacyKey, { apiVersion: '2025-08-27.basil' });
+  const mainKey = getMainStripeKey();
+  const mainStripe = mainKey ? new Stripe(mainKey, { apiVersion: '2025-08-27.basil' }) : null;
   const stripeCache = new Map();
 
   async function getStripeForCustomerId(customerId) {
@@ -527,7 +568,19 @@ async function runCsvCancelledAgentsAudit(guild, csvText) {
       notes.push('missing_customer_stripe_id');
     }
 
-    const stripeCanceled = Boolean(stripeResult.found && stripeResult.isCanceled);
+    let stripeCanceled = Boolean(stripeResult.found && stripeResult.isCanceled);
+    if (stripeCanceled && hasEcomAgentRole === 'yes') {
+      if (!mainStripe) {
+        stripeCanceled = false;
+        notes.push('main_stripe_not_configured');
+      } else {
+        const mainAccess = await lookupMainStripeAccess(mainStripe, customerStripeId, stripeResult.email);
+        if (mainAccess) {
+          stripeCanceled = false;
+          notes.push(mainAccess);
+        }
+      }
+    }
     const csvCanceled = csvStatus === 'canceled' || csvStatus === 'cancel_at_period_end';
     const statusMatch = csvStatusMatchesStripe(csvStatus, stripeResult);
 
@@ -632,6 +685,10 @@ function sleep(ms) {
  * @param {string} csvText
  */
 async function removeGhostRolesFromCsv(guild, csvText) {
+  if (!getMainStripeKey()) {
+    // Fail safe: without the main account we can't tell migrated members from real cancels.
+    throw new Error('STRIPE_SECRET_KEY_MAIN (main Stripe account) is not configured — refusing to remove roles');
+  }
   const audit = await runCsvCancelledAgentsAudit(guild, csvText);
   const targets = audit.rows.filter((row) => row.audit_is_ghost_agent === 'yes');
 
