@@ -17,4 +17,15 @@ function sameMessage(message, payload) {
     );
 }
 
-module.exports = { sameMessage };
+/**
+ * Creator-program channels (start-here, warmup, dm-automation, payouts, ...) only live in the
+ * "Ecom Efficiency Post" server. The bot is also in the main Ecom Efficiency server and must never
+ * post or create creator channels there.
+ */
+const CREATOR_GUILD_ID = process.env.CREATOR_GUILD_ID || '1556164962530103387';
+
+function creatorGuilds(client) {
+    return [...client.guilds.cache.values()].filter((guild) => guild.id === CREATOR_GUILD_ID);
+}
+
+module.exports = { sameMessage, creatorGuilds, CREATOR_GUILD_ID };

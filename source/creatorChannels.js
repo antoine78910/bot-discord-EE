@@ -25,7 +25,7 @@ const {
     TextInputBuilder,
     TextInputStyle,
 } = require('discord.js');
-const { sameMessage } = require('./discordSync');
+const { sameMessage, creatorGuilds } = require('./discordSync');
 
 const COLOR = 0x8b5cf6;
 const BRAND = 'ECOM EFFICIENCY CREATORS';
@@ -394,7 +394,7 @@ async function removeRetiredChannels(guild) {
 }
 
 async function publishCreatorChannels(client) {
-    for (const guild of client.guilds.cache.values()) {
+    for (const guild of creatorGuilds(client)) {
         await removeRetiredChannels(guild);
         const channels = await resolveChannels(guild);
         const link = (key) => (channels[key] ? `<#${channels[key].id}>` : `#${CHANNELS[key].name}`);

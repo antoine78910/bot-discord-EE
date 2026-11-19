@@ -25,7 +25,7 @@ const {
     OverwriteType,
     PermissionFlagsBits,
 } = require('discord.js');
-const { sameMessage } = require('./discordSync');
+const { sameMessage, creatorGuilds } = require('./discordSync');
 
 const EMBED_COLOR = 0x8b5cf6;
 const IDS = {
@@ -129,7 +129,7 @@ async function findPanelChannel(guild) {
 
 /** Post the panel once per guild; on restart, edit the existing panel instead of re-posting it. */
 async function publishPayoutPanel(client) {
-    for (const guild of client.guilds.cache.values()) {
+    for (const guild of creatorGuilds(client)) {
         const channel = await findPanelChannel(guild);
         if (!channel) {
             console.warn(`[PAYOUT] No payout-submission channel in ${guild.name} (set PAYOUT_SUBMISSION_CHANNEL_ID).`);
@@ -200,7 +200,7 @@ async function sweepIdleTickets(guild) {
 /** Periodic cleanup of empty payout tickets (also runs once on panel publish). */
 function startPayoutIdleCleanup(client) {
     const tick = () => {
-        for (const guild of client.guilds.cache.values()) {
+        for (const guild of creatorGuilds(client)) {
             sweepIdleTickets(guild).catch((error) =>
                 console.warn(`[PAYOUT] Idle sweep failed in ${guild.name}:`, error?.message || error)
             );
