@@ -353,7 +353,6 @@ function registerRow() {
 async function resolveChannels(guild) {
     const all = await guild.channels.fetch().catch(() => guild.channels.cache);
     const text = [...all.values()].filter((c) => c?.type === ChannelType.GuildText);
-    const anchor = text.find((c) => c.name.includes(CHANNELS.payout_submission.match));
     const resolved = {};
     for (const [key, spec] of Object.entries(CHANNELS)) {
         const pinned = PINNED_IDS[key] && all.get(PINNED_IDS[key]);
@@ -364,17 +363,9 @@ async function resolveChannels(guild) {
             resolved[key] = found;
             continue;
         }
-        if (NEVER_CREATE.includes(key)) continue;
-        try {
-            resolved[key] = await guild.channels.create({
-                name: spec.name,
-                type: ChannelType.GuildText,
-                parent: anchor?.parentId || null,
-                reason: 'Creator program channel',
-            });
-            console.log(`[CREATOR] Created #${spec.name} in ${guild.name}`);
-        } catch (error) {
-            console.warn(`[CREATOR] Could not create #${spec.name}:`, error?.message || error);
+        // Never create channels on startup: channels are managed by hand in Discord.
+        if (!NEVER_CREATE.includes(key)) {
+            console.log(`[CREATOR] #${spec.name} not found in ${guild.name} — skipped (not auto-created)`);
         }
     }
     return resolved;
